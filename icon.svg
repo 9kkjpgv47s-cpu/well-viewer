@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <!-- Thin light gray outline around whole logo -->
+  <rect x="1" y="1" width="178" height="178" fill="none" stroke="#d1d5db" stroke-width="2"/>
+  <!-- Red C: left bar + top bar + bottom-left bar (blocky C open on the right) -->
+  <rect x="10" y="10" width="50" height="160" fill="#b91c1c" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="10" y="10" width="130" height="48" fill="#b91c1c" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="10" y="122" width="82" height="48" fill="#b91c1c" stroke="#d1d5db" stroke-width="1.5"/>
+  <!-- White rectangular cutout in red C: on its right side, near the top -->
+  <rect x="62" y="18" width="52" height="52" fill="white" stroke="#d1d5db" stroke-width="1.5"/>
+  <text x="88" y="44" font-family="Georgia, serif" font-size="38" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="middle">&amp;</text>
+  <!-- Yellow J: right bar + bottom bar (meets red at x=92). Top-right corner solid. -->
+  <rect x="92" y="10" width="78" height="160" fill="#eab308" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="92" y="122" width="78" height="48" fill="#eab308" stroke="#d1d5db" stroke-width="1.5"/>
+</svg>

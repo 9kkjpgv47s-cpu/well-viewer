@@ -1,0 +1,37 @@
+Vercel file limit: 100 MB. Use chunked gzipped files — no data loss.
+
+STEP 1 — Create chunk files from your large CSV
+------------------------------------------------
+  cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+
+  python3 chunk_dnr_csv.py dnr_wells_full.csv
+
+  (Or if your big file is the slim one:  python3 chunk_dnr_csv.py dnr_wells_slim.csv )
+
+This reads your CSV and writes:
+  dnr_wells_chunk_0.csv.gz
+  dnr_wells_chunk_1.csv.gz
+  dnr_wells_chunk_2.csv.gz
+  ...
+
+Each chunk is under ~10 MB. The app loads chunk 0, then 1, then 2, … and merges
+all rows. You keep every well.
+
+STEP 2 — Commit and deploy only the chunk files
+------------------------------------------------
+  git add dnr_wells_chunk_*.csv.gz
+  git add .gitignore "C&J Well Viewer.html" index.html
+  git commit -m "Deploy chunked well dataset (under 100 MB per file)"
+  git push
+  npx vercel --prod
+
+Do NOT add dnr_wells_full.csv or dnr_wells_slim.csv (they are in .gitignore).
+
+STEP 3 — If you had previously committed a large file
+------------------------------------------------
+  git rm --cached dnr_wells_full.csv 2>/dev/null || true
+  git rm --cached dnr_wells_slim.csv 2>/dev/null || true
+  git rm --cached dnr_wells_slim.csv.gz 2>/dev/null || true
+  git commit -m "Remove oversized files; use chunks" || true
+
+Then add the chunk files and deploy as in Step 2.

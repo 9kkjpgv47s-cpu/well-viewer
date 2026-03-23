@@ -1,0 +1,20 @@
+Get all 414,953 wells on the live site
+======================================
+
+1. Put all 8 chunk files in the project folder.
+
+   If you moved chunks 1–7 to Desktop earlier, run:
+
+   cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+   mv ~/Desktop/dnr_wells_chunk_1.csv.gz ~/Desktop/dnr_wells_chunk_2.csv.gz ~/Desktop/dnr_wells_chunk_3.csv.gz ~/Desktop/dnr_wells_chunk_4.csv.gz ~/Desktop/dnr_wells_chunk_5.csv.gz ~/Desktop/dnr_wells_chunk_6.csv.gz ~/Desktop/dnr_wells_chunk_7.csv.gz .
+
+   You should have all of these in the folder:
+   dnr_wells_chunk_0.csv.gz through dnr_wells_chunk_7.csv.gz
+
+2. Deploy.
+
+   npx vercel --prod
+
+3. Open your site (e.g. https://c-j-well-viewer.vercel.app). The app will load chunk 0, then 1, then 2 … through 7 and show “Loaded XXXXX wells” when done. That number should be 414,953.
+
+Done. The site now has all the wells.

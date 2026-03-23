@@ -1,0 +1,12 @@
+.vercel
+.env*.local
+.DS_Store
+__pycache__/
+*.py[cod]
+.Python
+venv/
+.venv/
+# Large source CSV stays local; only the 2 gzipped chunks are committed and deployed.
+dnr_wells_full.csv
+dnr_wells_slim.csv
+dnr_wells_slim.csv.gz

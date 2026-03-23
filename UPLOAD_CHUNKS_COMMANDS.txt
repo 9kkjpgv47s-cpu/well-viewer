@@ -1,0 +1,12 @@
+Two commands. No git, no AWS. From the project folder:
+
+1. Create the two chunks:
+
+   cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+   python3 chunk_dnr_csv.py
+
+2. Deploy to Vercel (this was the working method; the single big file was too large, so we use 2 smaller chunk files):
+
+   npx vercel --prod
+
+That’s it. Both chunk files go up with the app in step 2.

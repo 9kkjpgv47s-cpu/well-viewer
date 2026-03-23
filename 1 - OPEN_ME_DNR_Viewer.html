@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C&J Well co - Offline Viewer (Grok Studio Edition)</title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f8fafc; }
+        #map { height: 72vh; min-height: 400px; width: 100%; border-radius: 20px; background: #e5e7eb; z-index: 1; touch-action: none; }
+        #wellsList { height: 320px; overflow-y: auto; }
+        .card { transition: all 0.2s; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgb(16 185 129 / 0.2); }
+        .zoom-btn { width: 36px; height: 36px; }
+        .leaflet-container { font-family: inherit; }
+    </style>
+</head>
+<body class="p-4 max-w-7xl mx-auto">
+    <div class="bg-emerald-900 text-white p-8 rounded-3xl text-center mb-8">
+        <h1 class="text-4xl font-bold">C&J WELL CO</h1>
+        <p class="text-emerald-200 mt-1">Offline Well Viewer • Avon & Danville • 65 real DNR wells built in • View Scanned Log opens official DNR report</p>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-4 bg-white rounded-3xl shadow p-6 flex flex-col">
+            <button onclick="useMyLocation()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-semibold text-lg mb-3 flex items-center justify-center gap-2">
+                📍 Use My Location (2-Mile View)
+            </button>
+            <button onclick="loadAvonDanvilleWells()" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-4 rounded-2xl font-semibold text-lg mb-3 flex items-center justify-center gap-2">
+                📊 Load Avon & Danville DNR Wells (65 real wells)
+            </button>
+            <button id="btnGroundElev" onclick="getGroundElevations()" class="w-full bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-2xl font-medium text-sm mb-4 flex items-center justify-center gap-2">
+                📐 Get ground elevations (when opened from a server)
+            </button>
+            <p class="text-[10px] text-gray-500 -mt-2 mb-4">Location works from file; elevation needs server.</p>
+
+            <h3 class="font-bold text-xl mb-1 text-gray-800">Wells on Screen (<span id="wellCount">0</span>)</h3>
+            <p class="text-xs text-gray-500 mb-2">Total Loaded: <span id="totalWells" class="font-medium text-emerald-700">0</span> — scroll to see all</p>
+            <div id="locationBanner" class="hidden mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900"></div>
+            <div id="wellsList" class="space-y-3 text-sm pr-2 mb-6"></div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Search by coordinates:</label>
+                <div class="flex gap-2">
+                    <input id="coordsInput" type="text" placeholder="39.7605, -86.4523" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <button onclick="goToCoords()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-medium">Go</button>
+                </div>
+            </div>
+
+            <div class="mb-6 bg-gray-50 p-4 rounded-2xl">
+                <div class="text-sm font-medium text-gray-700 mb-3">Well Depth Search (ft)</div>
+                <div class="mb-3">
+                    <input id="minDepth" type="number" placeholder="Min depth" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div class="mb-3">
+                    <input id="maxDepth" type="number" placeholder="Max depth" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <button onclick="applyFilters()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-sm font-medium">Apply Depth Filter</button>
+            </div>
+
+            <input id="textSearch" type="text" placeholder="Search ID, aquifer, owner, notes..." onkeyup="applyFilters()" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-6">
+
+            <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center mt-6 cursor-pointer hover:border-emerald-500">
+                <p class="text-sm text-gray-500">Drop your real DNR CSV here for authentic wells & full logs</p>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+                <button onclick="clearAllWells()" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 py-3 rounded-2xl text-sm font-medium">🗑️ Clear Data</button>
+                <button onclick="exportCSV()" class="flex-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 py-3 rounded-2xl text-sm font-medium">📤 Export CSV</button>
+            </div>
+        </div>
+
+        <div class="lg:col-span-8 relative" style="min-height: 450px;">
+            <div id="map"></div>
+            <div class="absolute bottom-6 right-6 bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden z-[1000]">
+                <button onclick="map && map.zoomIn()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100 border-b">＋</button>
+                <button onclick="map && map.zoomOut()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100">－</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="wellModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
+            <div class="flex justify-between items-center p-6 border-b shrink-0">
+                <h2 id="modalTitle" class="text-2xl font-bold text-emerald-800"></h2>
+                <button onclick="closeModal()" class="text-4xl leading-none text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div id="modalSummary" class="p-6 border-b overflow-auto shrink-0">
+                    <div id="modalContent" class="space-y-6 text-sm"></div>
+                </div>
+                <div id="logViewerSection" class="hidden flex-1 flex flex-col min-h-0 p-4 overflow-auto">
+                    <div class="flex justify-between items-center mb-2 shrink-0">
+                        <span class="text-sm font-medium text-gray-700">Detailed log — all information (this page)</span>
+                        <button onclick="hideLogViewer()" class="text-sm text-gray-500 hover:text-gray-700">Hide log</button>
+                    </div>
+                    <div id="logViewerContent" class="flex-1 min-h-[300px] p-6 bg-gray-50 rounded-xl border text-sm overflow-auto"></div>
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-4 shrink-0">
+                <button onclick="closeModal()" class="flex-1 py-4 bg-gray-100 rounded-2xl font-medium">Close</button>
+                <button id="btnViewLog" onclick="viewLogInPage()" class="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-medium">View detailed log on this page</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedWellForLog = null;
+        let wells = JSON.parse(localStorage.getItem('cjWells')) || [];
+        let map = null;
+        let gpsPosition = null;
+        let tempMarker = null;
+        let locationMarker = null;
+        let markerCluster = L.markerClusterGroup();
+        let currentFilters = { text: '', minDepth: 0, maxDepth: 9999 };
+        let userElevationM = null;
+        let lastWellElevationsM = null;
+
+        const REAL_DNR_WELLS = [{"id":"DNR-184649","refno":184649,"lat":39.60094155101263,"lon":-86.52648346721426,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HOLGWORTH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184649&_from=SUMMARY&_action=Details"},{"id":"DNR-184610","refno":184610,"lat":39.60094581707721,"lon":-86.51441644789972,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DUNCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184610&_from=SUMMARY&_action=Details"},{"id":"DNR-184659","refno":184659,"lat":39.60096123188862,"lon":-86.52689100179518,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"THORP","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184659&_from=SUMMARY&_action=Details"},{"id":"DNR-184654","refno":184654,"lat":39.60099299815623,"lon":-86.5280555543276,"county":"Hendricks","depth":101,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DON HEALD","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184654&_from=SUMMARY&_action=Details"},{"id":"DNR-403612","refno":403612,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":80,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE & SUSAN BURCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=403612&_from=SUMMARY&_action=Details"},{"id":"DNR-404334","refno":404334,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":729,"aquifer":"Bedrock","loc_type":"Field Located","owner":"MIKE EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=404334&_from=SUMMARY&_action=Details"},{"id":"DNR-404375","refno":404375,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":35,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=404375&_from=SUMMARY&_action=Details"},{"id":"DNR-184644","refno":184644,"lat":39.60130793550184,"lon":-86.5235340957765,"county":"Hendricks","depth":140,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"JAMES MICKLEY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184644&_from=SUMMARY&_action=Details"},{"id":"DNR-184639","refno":184639,"lat":39.601316420526295,"lon":-86.52782040590375,"county":"Hendricks","depth":155,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE SKILLMAN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184639&_from=SUMMARY&_action=Details"},{"id":"DNR-185341","refno":185341,"lat":39.60180608488984,"lon":-86.62230431018246,"county":"Hendricks","depth":65,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BOB STEVENSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185341&_from=SUMMARY&_action=Details"},{"id":"DNR-184660","refno":184660,"lat":39.60191063165977,"lon":-86.47520332811588,"county":"Hendricks","depth":105,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ROBERT LYNCH-OWNER 1991","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184660&_from=SUMMARY&_action=Details"},{"id":"DNR-15208","refno":15208,"lat":39.602074090850714,"lon":-86.58465688510935,"county":"Hendricks","depth":55,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MARVIN C MARTIN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=15208&_from=SUMMARY&_action=Details"},{"id":"DNR-185346","refno":185346,"lat":39.60224755451867,"lon":-86.62229026543324,"county":"Hendricks","depth":65,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE STEVENSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185346&_from=SUMMARY&_action=Details"},{"id":"DNR-86632","refno":86632,"lat":39.60233774659317,"lon":-86.5026540003872,"county":"Hendricks","depth":85,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"TOM KENWORTHY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=86632&_from=SUMMARY&_action=Details"},{"id":"DNR-20806","refno":20806,"lat":39.602627039032406,"lon":-86.55257559484804,"county":"Hendricks","depth":121,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"JACK COOK","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=20806&_from=SUMMARY&_action=Details"},{"id":"DNR-227832","refno":227832,"lat":39.602744714939455,"lon":-86.615659632608,"county":"Hendricks","depth":130,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"MELVIN KINNEY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=227832&_from=SUMMARY&_action=Details"},{"id":"DNR-343748","refno":343748,"lat":39.60323356564433,"lon":-86.5371964270036,"county":"Hendricks","depth":141,"aquifer":"Estimated","loc_type":"Estimated Location/Geocoding addresses","owner":"BEN EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=343748&_from=SUMMARY&_action=Details"},{"id":"DNR-392872","refno":392872,"lat":39.60444551979309,"lon":-86.53608178717528,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392872&_from=SUMMARY&_action=Details"},{"id":"DNR-392873","refno":392873,"lat":39.60444551979309,"lon":-86.53608178717528,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392873&_from=SUMMARY&_action=Details"},{"id":"DNR-340424","refno":340424,"lat":39.604461763202856,"lon":-86.5267049346315,"county":"Hendricks","depth":100,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=340424&_from=SUMMARY&_action=Details"},{"id":"DNR-184619","refno":184619,"lat":39.6054984217847,"lon":-86.53480438192915,"county":"Hendricks","depth":112,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"JOHN EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184619&_from=SUMMARY&_action=Details"},{"id":"DNR-426558","refno":426558,"lat":39.60683966132352,"lon":-86.59717405930824,"county":"Hendricks","depth":200,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"Kristy Clements","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=426558&_from=SUMMARY&_action=Details"},{"id":"DNR-426489","refno":426489,"lat":39.60685776338087,"lon":-86.59719725151481,"county":"Hendricks","depth":44,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"Kristy Clements","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=426489&_from=SUMMARY&_action=Details"},{"id":"DNR-15206","refno":15206,"lat":39.606990105950715,"lon":-86.57367775115041,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DON SCHOLL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=15206&_from=SUMMARY&_action=Details"},{"id":"DNR-185361","refno":185361,"lat":39.60756632132866,"lon":-86.5760156277134,"county":"Hendricks","depth":42,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"COTRON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185361&_from=SUMMARY&_action=Details"},{"id":"DNR-267005","refno":267005,"lat":39.60768588013941,"lon":-86.61945308696615,"county":"Hendricks","depth":120,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"CLYDE CALVERT","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=267005&_from=SUMMARY&_action=Details"},{"id":"DNR-184713","refno":184713,"lat":39.60813007472168,"lon":-86.53142099803148,"county":"Hendricks","depth":95,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"BROOKS & SONS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184713&_from=SUMMARY&_action=Details"},{"id":"DNR-185411","refno":185411,"lat":39.608275898291275,"lon":-86.64822299774782,"county":"Hendricks","depth":74,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ALBERT WALLACE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185411&_from=SUMMARY&_action=Details"},{"id":"DNR-184694","refno":184694,"lat":39.608645958478135,"lon":-86.52219080219999,"county":"Hendricks","depth":160,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DAVID KYAMP","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184694&_from=SUMMARY&_action=Details"},{"id":"DNR-185366","refno":185366,"lat":39.60880832888855,"lon":-86.58560683860144,"county":"Hendricks","depth":100,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HERMAN WILLIAMS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185366&_from=SUMMARY&_action=Details"},{"id":"DNR-184630","refno":184630,"lat":39.60992588104326,"lon":-86.4803150419923,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"UNION OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184630&_from=SUMMARY&_action=Details"},{"id":"DNR-49504","refno":49504,"lat":39.60997434327697,"lon":-86.51968962006093,"county":"Hendricks","depth":138,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"INA ARMOUR","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=49504&_from=SUMMARY&_action=Details"},{"id":"DNR-14474","refno":14474,"lat":39.609989629494514,"lon":-86.48046600404719,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"INDY WEST TRUCK PLAZA-UNOCAL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=14474&_from=SUMMARY&_action=Details"},{"id":"DNR-308016","refno":308016,"lat":39.61050081205466,"lon":-86.52722297497091,"county":"Hendricks","depth":220,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"EMERSON FRITCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=308016&_from=SUMMARY&_action=Details"},{"id":"DNR-184645","refno":184645,"lat":39.61085119552463,"lon":-86.478550272536,"county":"Hendricks","depth":208,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"BLUE & WHITE SERVICE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184645&_from=SUMMARY&_action=Details"},{"id":"DNR-184699","refno":184699,"lat":39.61125816508533,"lon":-86.52638994044946,"county":"Hendricks","depth":100,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"COLE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184699&_from=SUMMARY&_action=Details"},{"id":"DNR-358528","refno":358528,"lat":39.61159871684239,"lon":-86.52688932603527,"county":"Hendricks","depth":160,"aquifer":"Estimated","loc_type":"Estimated Location/Geocoding addresses","owner":"DEBBIE GROSS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=358528&_from=SUMMARY&_action=Details"},{"id":"DNR-184620","refno":184620,"lat":39.61176653605822,"lon":-86.47973163768378,"county":"Hendricks","depth":160,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"PURE OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184620&_from=SUMMARY&_action=Details"},{"id":"DNR-184625","refno":184625,"lat":39.61176653605822,"lon":-86.47973163768378,"county":"Hendricks","depth":227,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"PURE OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184625&_from=SUMMARY&_action=Details"},{"id":"DNR-392865","refno":392865,"lat":39.611790181571834,"lon":-86.48912083032323,"county":"Hendricks","depth":109,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"LAWRENCE SALE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392865&_from=SUMMARY&_action=Details"},{"id":"DNR-159224","refno":159224,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":78,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"KENNETH MARSH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=159224&_from=SUMMARY&_action=Details"},{"id":"DNR-269230","refno":269230,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":118,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"GENE HORTON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=269230&_from=SUMMARY&_action=Details"},{"id":"DNR-381033","refno":381033,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":120,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"LARRY RUBLE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=381033&_from=SUMMARY&_action=Details"},{"id":"DNR-275168","refno":275168,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":200,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=275168&_from=SUMMARY&_action=Details"},{"id":"DNR-275169","refno":275169,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":140,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=275169&_from=SUMMARY&_action=Details"},{"id":"DNR-799","refno":799,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":100,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=799&_from=SUMMARY&_action=Details"},{"id":"DNR-184714","refno":184714,"lat":39.61187722039838,"lon":-86.52134149036569,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"TIM GARVER","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184714&_from=SUMMARY&_action=Details"},{"id":"DNR-185356","refno":185356,"lat":39.6126578381949,"lon":-86.60428159727171,"county":"Hendricks","depth":80,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ELDA BARROW","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185356&_from=SUMMARY&_action=Details"},{"id":"DNR-184684","refno":184684,"lat":39.61266585422992,"lon":-86.52248937728004,"county":"Hendricks","depth":102,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BERNARD SHIONFESSEL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184684&_from=SUMMARY&_action=Details"},{"id":"DNR-184689","refno":184689,"lat":39.612918667077444,"lon":-86.52261578766367,"county":"Hendricks","depth":92,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BAYIELD","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184689&_from=SUMMARY&_action=Details"},{"id":"DNR-307286","refno":307286,"lat":39.613360964078026,"lon":-86.5043702726246,"county":"Hendricks","depth":138,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"MARK WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=307286&_from=SUMMARY&_action=Details"},{"id":"DNR-184709","refno":184709,"lat":39.61362701215482,"lon":-86.50456539551406,"county":"Hendricks","depth":64,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MAURICE WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184709&_from=SUMMARY&_action=Details"},{"id":"DNR-7375","refno":7375,"lat":39.61363652743304,"lon":-86.50560317129423,"county":"Hendricks","depth":59,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"MARK WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=7375&_from=SUMMARY&_action=Details"},{"id":"DNR-49499","refno":49499,"lat":39.61364164330156,"lon":-86.51971087538189,"county":"Hendricks","depth":96,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"CECIL HELTON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=49499&_from=SUMMARY&_action=Details"},{"id":"DNR-184604","refno":184604,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":50,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184604&_from=SUMMARY&_action=Details"},{"id":"DNR-184609","refno":184609,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184609&_from=SUMMARY&_action=Details"},{"id":"DNR-184614","refno":184614,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184614&_from=SUMMARY&_action=Details"},{"id":"DNR-184698","refno":184698,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":105,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184698&_from=SUMMARY&_action=Details"},{"id":"DNR-184703","refno":184703,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":130,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184703&_from=SUMMARY&_action=Details"},{"id":"DNR-184708","refno":184708,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":55,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184708&_from=SUMMARY&_action=Details"},{"id":"DNR-184718","refno":184718,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":55,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184718&_from=SUMMARY&_action=Details"},{"id":"DNR-184634","refno":184634,"lat":39.61409407561194,"lon":-86.5324751647042,"county":"Hendricks","depth":75,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BUD EPPERSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184634&_from=SUMMARY&_action=Details"},{"id":"DNR-14473","refno":14473,"lat":39.6146903239044,"lon":-86.47384870815442,"county":"Hendricks","depth":73,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"LLOYD RUNYAN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=14473&_from=SUMMARY&_action=Details"},{"id":"DNR-184640","refno":184640,"lat":39.614861610397284,"lon":-86.48188584480306,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HARRY HOOP III","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184640&_from=SUMMARY&_action=Details"},{"id":"DNR-184615","refno":184615,"lat":39.61491096383471,"lon":-86.49930210293297,"county":"Hendricks","depth":35,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"CLAVEN WELLS JR. II","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184615&_from=SUMMARY&_action=Details"}];
+
+        if (wells.length === 0) { wells = REAL_DNR_WELLS.slice(); localStorage.setItem('cjWells', JSON.stringify(wells)); }
+
+        function initMap() {
+            if (map) return;
+            map = L.map('map', { scrollWheelZoom: false }).setView([39.7628, -86.3997], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, minZoom: 8, attribution: '© OpenStreetMap | C&J Well co' }).addTo(map);
+            map.addLayer(markerCluster);
+            addAllMarkers();
+            map.on('moveend zoomend', updateWellsList);
+            updateWellsList();
+            setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); }, 200);
+        }
+
+        function setupTrackpadPanZoom() {
+            var mapContainer = document.getElementById('map');
+            if (!mapContainer || !map) return;
+            mapContainer.addEventListener('wheel', function(e) {
+                if (!map) return;
+                e.preventDefault();
+                if (e.ctrlKey || e.metaKey) {
+                    var delta = e.deltaY > 0 ? -1 : 1;
+                    map.setZoom(map.getZoom() + delta);
+                } else {
+                    var dx = e.deltaX != null ? e.deltaX : 0;
+                    var dy = e.deltaY != null ? e.deltaY : 0;
+                    if (dx !== 0 || dy !== 0) map.panBy([-dx, -dy], { animate: false });
+                }
+            }, { passive: false });
+        }
+
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 3958.8; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
+            return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
+        }
+
+        function clearMarkers() { markerCluster.clearLayers(); if (map && tempMarker) map.removeLayer(tempMarker); tempMarker = null; }
+
+        function addAllMarkers() {
+            if (!map) return;
+            clearMarkers();
+            wells.forEach(w => {
+                const aq = (w.aquifer || "").toLowerCase();
+                const isUnconsolidated = aq.includes("unconsolidated") || aq.includes("sand") || aq.includes("gravel");
+                const isEstimated = aq.includes("estimated") || (w.location_type || "").toLowerCase().includes("estimated");
+                let color = "#dc2626";
+                if (isEstimated) color = "#16a34a";
+                else if (isUnconsolidated) color = "#2563eb";
+                const marker = L.circleMarker([w.lat, w.lon], { radius: 8, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.95 })
+                    .bindPopup(`<b>${w.id}</b><br>${w.depth} ft`);
+                marker.on('click', () => showDetailById(w.id));
+                markerCluster.addLayer(marker);
+            });
+        }
+
+        function applyFilters() {
+            currentFilters.text = document.getElementById('textSearch').value.toLowerCase().trim();
+            currentFilters.minDepth = parseFloat(document.getElementById('minDepth').value) || 0;
+            currentFilters.maxDepth = parseFloat(document.getElementById('maxDepth').value) || 9999;
+            updateWellsList();
+        }
+
+        function mToFt(m) { return m == null ? null : Math.round(m * 3.28084); }
+        function locKey(lat, lon) { return lat.toFixed(5) + ',' + lon.toFixed(5); }
+
+        function parseElevationResponse(text) {
+            var data;
+            try { data = JSON.parse(text); } catch (e) { return null; }
+            if (!data.results) return null;
+            return data.results.map(function(res) { return res.elevation; });
+        }
+        function fetchElevationsBatch(points) {
+            if (!points.length) return Promise.resolve([]);
+            var qs = points.map(function(p) { return p.lat + ',' + p.lon; }).join('|');
+            var url = 'https://api.opentopodata.org/v1/srtm90m?locations=' + qs;
+            return fetch(url)
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    var elevs = parseElevationResponse(text);
+                    return elevs || points.map(function() { return null; });
+                })
+                .catch(function() {
+                    var proxies = [
+                        'https://api.allorigins.win/raw?url=',
+                        'https://corsproxy.io/?'
+                    ];
+                    var i = 0;
+                    function tryProxy() {
+                        if (i >= proxies.length) return Promise.resolve(points.map(function() { return null; }));
+                        var proxyUrl = proxies[i] + (proxies[i].indexOf('?') >= 0 ? 'url=' : '') + encodeURIComponent(url);
+                        i++;
+                        return fetch(proxyUrl).then(function(r) { return r.text(); })
+                            .then(function(text) {
+                                var elevs = parseElevationResponse(text);
+                                return elevs || tryProxy();
+                            })
+                            .catch(tryProxy);
+                    }
+                    return tryProxy();
+                });
+        }
+
+        function updateWellsList(referencePos) {
+            if (!map) return;
+            var ref = referencePos !== undefined ? referencePos : gpsPosition;
+            var referencePosFinal = ref;
+            var banner = document.getElementById('locationBanner');
+            var bounds = map.getBounds();
+            var refLon = referencePosFinal ? (referencePosFinal.lon != null ? referencePosFinal.lon : referencePosFinal.lng) : null;
+
+            var visible = wells.filter(function(w) {
+                return bounds.contains([w.lat, w.lon]) &&
+                    (w.depth >= currentFilters.minDepth && w.depth <= currentFilters.maxDepth) &&
+                    (!currentFilters.text ||
+                        (w.id || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.aquifer || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.owner || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.notes || '').toLowerCase().includes(currentFilters.text) ||
+                        String(w.depth || '').includes(currentFilters.text) ||
+                        (w.permit || '').toLowerCase().includes(currentFilters.text));
+            });
+
+            var listToShow = visible.slice();
+            var fallbackClosest = false;
+            if (referencePosFinal && refLon != null && wells.length > 0) {
+                listToShow.sort(function(a, b) {
+                    return parseFloat(haversine(referencePosFinal.lat, refLon, a.lat, a.lon)) - parseFloat(haversine(referencePosFinal.lat, refLon, b.lat, b.lon));
+                });
+                if (visible.length === 0) {
+                    fallbackClosest = true;
+                    listToShow = wells.slice().sort(function(a, b) {
+                        return parseFloat(haversine(referencePosFinal.lat, refLon, a.lat, a.lon)) - parseFloat(haversine(referencePosFinal.lat, refLon, b.lat, b.lon));
+                    }).slice(0, 5);
+                }
+            } else if (referencePosFinal && refLon != null) {
+                listToShow.sort(function(a, b) {
+                    return parseFloat(haversine(referencePosFinal.lat, refLon, a.lat, a.lon)) - parseFloat(haversine(referencePosFinal.lat, refLon, b.lat, b.lon));
+                });
+            }
+
+            document.getElementById('wellCount').textContent = fallbackClosest ? listToShow.length : visible.length;
+            document.getElementById('totalWells').textContent = wells.length;
+
+            function renderRows(elevUser, elevWells) {
+                var html = '';
+                var rLon2 = referencePosFinal ? (referencePosFinal.lon != null ? referencePosFinal.lon : referencePosFinal.lng) : null;
+                listToShow.forEach(function(w, i) {
+                    var dist = (referencePosFinal && rLon2 != null) ? haversine(referencePosFinal.lat, rLon2, w.lat, w.lon) + ' mi' : '—';
+                    var wellElevFt = elevWells && elevWells[i] != null ? mToFt(elevWells[i]) : null;
+                    var type = (w.aquifer || '').toLowerCase().includes('unconsolidated') ? 'Gravel' : 'Rock';
+                    var safeId = String(w.id).replace(/'/g, "\\'");
+                    var elevLine = '';
+                    if (referencePosFinal && rLon2 != null) {
+                        var diffText = '';
+                        if (elevUser != null && wellElevFt != null) {
+                            var diffFt = wellElevFt - mToFt(elevUser);
+                            diffText = ' · <strong>Diff: ' + (diffFt >= 0 ? '+' : '') + diffFt + ' ft</strong> (well ground vs you)';
+                        }
+                        elevLine = '<div class="text-[10px] text-gray-600 mt-0.5">Ground elev: you ' + (elevUser != null ? mToFt(elevUser) + ' ft' : '…') + ', well ' + (wellElevFt != null ? wellElevFt + ' ft' : '…') + diffText + '</div>';
+                    }
+                    html += '<div onclick="showDetailById(\'' + safeId + '\')" class="card bg-gray-50 p-4 rounded-2xl cursor-pointer">' +
+                        '<div class="flex justify-between items-start gap-2">' +
+                        '<div class="min-w-0"><div class="font-medium truncate">' + w.id + '</div><div class="text-xs text-gray-500">' + type + ' · ' + w.depth + ' ft</div>' + elevLine + '</div>' +
+                        '<div class="text-right shrink-0"><div class="font-semibold text-emerald-600">' + dist + '</div></div></div></div>';
+                });
+                if (!listToShow.length) {
+                    html = '<p class="text-gray-500 italic">No wells match — load wells or pan map</p>';
+                }
+                document.getElementById('wellsList').innerHTML = html;
+
+                if (referencePosFinal && refLon2 != null && listToShow.length) {
+                    var nearestDist = haversine(referencePosFinal.lat, refLon2, listToShow[0].lat, listToShow[0].lon);
+                    var bannerHtml = '<strong>Your ground elevation:</strong> ' + (elevUser != null ? mToFt(elevUser) + ' ft' : 'click "Get ground elevations" below') +
+                        ' · <strong>Nearest well:</strong> ' + nearestDist + ' mi';
+                    if (fallbackClosest) {
+                        bannerHtml = '<strong>No wells in current map view.</strong> Showing 5 closest. ' + bannerHtml;
+                    } else {
+                        bannerHtml = '<strong>Wells in view</strong> — ' + bannerHtml;
+                    }
+                    banner.classList.remove('hidden');
+                    banner.innerHTML = bannerHtml;
+                } else {
+                    banner.classList.add('hidden');
+                }
+            }
+
+            if (!listToShow.length && !fallbackClosest) {
+                document.getElementById('wellsList').innerHTML = '<p class="text-gray-500 italic">No wells match — adjust filters or pan map</p>';
+                banner.classList.add('hidden');
+                return;
+            }
+
+            if (!referencePosFinal || refLon == null) {
+                var html2 = '';
+                listToShow.forEach(function(w) {
+                    var type = (w.aquifer || '').toLowerCase().includes('unconsolidated') ? 'Gravel' : 'Rock';
+                    var safeId = String(w.id).replace(/'/g, "\\'");
+                    html2 += '<div onclick="showDetailById(\'' + safeId + '\')" class="card bg-gray-50 p-4 rounded-2xl cursor-pointer flex justify-between items-center">' +
+                        '<div><div class="font-medium">' + w.id + '</div><div class="text-xs text-gray-500">' + type + ' • ' + w.depth + ' ft</div></div><div class="text-gray-400">—</div></div>';
+                });
+                document.getElementById('wellsList').innerHTML = html2 || '<p class="text-gray-500 italic">No wells — load data</p>';
+                banner.classList.add('hidden');
+                return;
+            }
+
+            renderRows(userElevationM, lastWellElevationsM && lastWellElevationsM.length === listToShow.length ? lastWellElevationsM : listToShow.map(function() { return null; }));
+        }
+
+        function getGroundElevations() {
+            if (window.location.protocol === 'file:') {
+                alert('Elevation is off when the page is opened as a file (for testing that\'s fine). To use elevation, open the page from a server (e.g. run START_VIEWER.command). Your location and distances work either way.');
+                return;
+            }
+            if (!gpsPosition) {
+                alert('Click "Use My Location" first, then load wells. Then click this button to get ground elevations (needs internet).');
+                return;
+            }
+            if (!wells.length) {
+                alert('Load wells first (Avon & Danville or drop a CSV).');
+                return;
+            }
+            var bounds = map.getBounds();
+            var refLon = gpsPosition.lon != null ? gpsPosition.lon : gpsPosition.lng;
+            var visible = wells.filter(function(w) {
+                return bounds.contains([w.lat, w.lon]) &&
+                    (w.depth >= currentFilters.minDepth && w.depth <= currentFilters.maxDepth) &&
+                    (!currentFilters.text ||
+                        (w.id || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.aquifer || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.owner || '').toLowerCase().includes(currentFilters.text) ||
+                        (w.notes || '').toLowerCase().includes(currentFilters.text) ||
+                        String(w.depth || '').includes(currentFilters.text) ||
+                        (w.permit || '').toLowerCase().includes(currentFilters.text));
+            });
+            var listToShow = visible.slice();
+            listToShow.sort(function(a, b) {
+                return parseFloat(haversine(gpsPosition.lat, refLon, a.lat, a.lon)) - parseFloat(haversine(gpsPosition.lat, refLon, b.lat, b.lon));
+            });
+            if (listToShow.length === 0) {
+                listToShow = wells.slice().sort(function(a, b) {
+                    return parseFloat(haversine(gpsPosition.lat, refLon, a.lat, a.lon)) - parseFloat(haversine(gpsPosition.lat, refLon, b.lat, b.lon));
+                }).slice(0, 5);
+            }
+            if (listToShow.length === 0) {
+                alert('No wells to show.');
+                return;
+            }
+            var points = [{ lat: gpsPosition.lat, lon: refLon }].concat(listToShow.map(function(w) { return { lat: w.lat, lon: w.lon }; }));
+            var btn = document.getElementById('btnGroundElev');
+            if (btn) { btn.disabled = true; btn.textContent = 'Fetching elevations…'; }
+            fetchElevationsBatch(points).then(function(elevs) {
+                if (btn) { btn.disabled = false; btn.innerHTML = '📐 Get ground elevations (your location vs wells) — needs internet'; }
+                if (!elevs || !elevs.length) {
+                    alert('Could not get elevations (check internet or try again).');
+                    return;
+                }
+                userElevationM = elevs[0];
+                lastWellElevationsM = elevs.slice(1);
+                updateWellsList();
+            }).catch(function() {
+                if (btn) { btn.disabled = false; btn.innerHTML = '📐 Get ground elevations (your location vs wells) — needs internet'; }
+                alert('Elevation request failed. Check internet connection.');
+            });
+        }
+
+        function loadAvonDanvilleWells() {
+            if (!map) {
+                alert('Map is still loading. Please wait a moment and try again.');
+                return;
+            }
+            if (typeof REAL_DNR_WELLS === 'undefined' || !REAL_DNR_WELLS.length) {
+                alert('Well data not available. Refresh the page and try again.');
+                return;
+            }
+            wells = REAL_DNR_WELLS.slice();
+            localStorage.setItem('cjWells', JSON.stringify(wells));
+            addAllMarkers();
+            if (wells.length > 0) {
+                var bounds = L.latLngBounds(wells.map(function(w) { return [w.lat, w.lon]; }));
+                map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+            }
+            updateWellsList();
+            alert('Loaded ' + wells.length + ' wells. Map zoomed to show them.');
+        }
+
+        function useMyLocation() {
+            if (!map) return;
+            navigator.geolocation.getCurrentPosition(function(pos) {
+                gpsPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                userElevationM = null;
+                if (locationMarker && map) map.removeLayer(locationMarker);
+                locationMarker = L.circleMarker([gpsPosition.lat, gpsPosition.lon], {
+                    radius: 12,
+                    fillColor: '#2563eb',
+                    color: '#fff',
+                    weight: 3,
+                    fillOpacity: 0.95
+                }).bindPopup('You are here').addTo(map);
+                map.flyTo([gpsPosition.lat, gpsPosition.lon], 14);
+                map.once('moveend', function() { updateWellsList(); });
+            }, function() { alert('Location permission denied. Use coordinates search or load wells.'); });
+        }
+
+        function goToCoords() {
+            if (!map) return;
+            let input = document.getElementById('coordsInput').value.trim().replace(/\s+/g, ' ');
+            if (!input) return alert('Enter coordinates!');
+            const parts = input.split(/[, ]+/).map(p => parseFloat(p));
+            if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return alert('Use format: 39.7605, -86.4523');
+            const [lat, lon] = parts;
+            if (tempMarker) map.removeLayer(tempMarker);
+            tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
+            map.flyTo([lat, lon], 16);
+            map.once('moveend', function() { updateWellsList({ lat: lat, lon: lon }); });
+        }
+
+        function showDetailById(id) {
+            const w = wells.find(well => well.id === id);
+            if (!w) return;
+            selectedWellForLog = w;
+            const refPos = gpsPosition || (tempMarker ? tempMarker.getLatLng() : null);
+            const refLon = refPos ? (refPos.lon != null ? refPos.lon : refPos.lng) : null;
+            const dist = (refPos && refLon != null) ? haversine(refPos.lat, refLon, w.lat, w.lon) + ' mi' : '';
+            let html = '<div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">';
+            Object.keys(w).forEach(key => {
+                if (['lat', 'lon'].includes(key)) return;
+                let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                html += `<div><strong>${label}:</strong> ${w[key] != null && w[key] !== '' ? w[key] : '—'}</div>`;
+            });
+            html += '</div>';
+            if (dist) html += `<div class="mt-6 pt-4 border-t text-xs text-gray-500"><strong>Distance from point:</strong> ${dist}</div>`;
+            document.getElementById('modalTitle').textContent = w.id;
+            document.getElementById('modalContent').innerHTML = html;
+            hideLogViewer();
+            document.getElementById('wellModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            hideLogViewer();
+            document.getElementById('wellModal').classList.add('hidden');
+        }
+        function getReportUrl() {
+            if (!selectedWellForLog) return '';
+            return selectedWellForLog.report || 'https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=' + (selectedWellForLog.refno || selectedWellForLog.id) + '&_from=SUMMARY&_action=Details';
+        }
+        function viewLogInPage() {
+            if (!selectedWellForLog) return;
+            var w = selectedWellForLog;
+            var section = document.getElementById('logViewerSection');
+            var content = document.getElementById('logViewerContent');
+            var rows = [];
+            Object.keys(w).forEach(function(key) {
+                var label = key.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+                var val = w[key];
+                if (val == null || val === '') val = '—';
+                else if (key === 'report') val = '<a href="' + val + '" target="_blank" rel="noopener" class="text-blue-600 hover:underline break-all">' + val + '</a>';
+                rows.push('<tr class="border-b border-gray-200"><td class="py-2 pr-4 font-medium text-gray-700 align-top">' + label + '</td><td class="py-2 text-gray-900">' + val + '</td></tr>');
+            });
+            content.innerHTML = '<table class="w-full"><tbody>' + rows.join('') + '</tbody></table>' +
+                (w.report ? '<p class="mt-6 pt-4 border-t text-gray-600">Official DNR full report: <a href="' + w.report + '" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Open in new tab</a></p>' : '');
+            section.classList.remove('hidden');
+            section.classList.add('flex');
+        }
+        function hideLogViewer() {
+            var section = document.getElementById('logViewerSection');
+            var content = document.getElementById('logViewerContent');
+            section.classList.add('hidden');
+            section.classList.remove('flex');
+            content.innerHTML = '';
+        }
+
+        function handleCSV(file) {
+            if (!file) return;
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    wells = results.data.map(row => {
+                        const r = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase().trim(), v]));
+                        return {
+                            id: r.id || r.wellid || r.permit || r.refno || 'CJ-' + Date.now(),
+                            lat: parseFloat(r.lat || r.latitude || r.y),
+                            lon: parseFloat(r.lon || r.longitude || r.long || r.x),
+                            ...r
+                        };
+                    }).filter(w => w.lat != null && w.lon != null && !isNaN(w.lat) && !isNaN(w.lon));
+                    localStorage.setItem('cjWells', JSON.stringify(wells));
+                    addAllMarkers();
+                    updateWellsList();
+                    alert('✅ Loaded ' + wells.length + ' wells with all DNR columns!');
+                }
+            });
+        }
+
+        function clearAllWells() {
+            if (confirm('Clear ALL?')) {
+                wells = [];
+                localStorage.removeItem('cjWells');
+                addAllMarkers();
+                updateWellsList();
+            }
+        }
+
+        function exportCSV() {
+            if (!wells.length) return alert('No wells to export.');
+            const keys = [...new Set(wells.flatMap(w => Object.keys(w)))];
+            const csv = Papa.unparse(wells, { columns: keys });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'cj_wells_export_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        const dropZone = document.getElementById('dropZone');
+        dropZone.addEventListener('click', () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.csv'; i.onchange = e => handleCSV(e.target.files[0]); i.click(); });
+        dropZone.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) handleCSV(e.dataTransfer.files[0]); });
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#10b981'; });
+        dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#d1d5db'; });
+
+        if (localStorage.getItem('cjWells')) wells = JSON.parse(localStorage.getItem('cjWells'));
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initMap);
+        } else {
+            initMap();
+        }
+    </script>
+</body>
+</html>

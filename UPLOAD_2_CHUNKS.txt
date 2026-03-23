@@ -1,0 +1,18 @@
+Why you saw "over 100 MB": Vercel uploads the whole folder. dnr_wells_full.csv (112 MB) and dnr_wells_slim.csv (81 MB) were in the folder, so one of them triggered the limit. The chunk files (2–3 MB each) are fine.
+
+Fix: A .vercelignore file now excludes those large CSVs. They stay on your computer; only the chunk files and app get deployed.
+
+--- Create 8 chunks (once) ---
+cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+python3 chunk_dnr_csv.py
+
+--- Deploy (all 8 chunks at once is OK now) ---
+cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+npx vercel --prod
+
+No need to move chunks to Desktop anymore. The big CSVs are ignored by Vercel.
+
+--- If you still want to deploy one chunk at a time ---
+Section 1: mv dnr_wells_chunk_1.csv.gz through chunk_7 to ~/Desktop/, then npx vercel --prod
+Section 2: mv chunk_1 back, move chunk_2–7 to Desktop, npx vercel --prod
+(etc. — see previous version of this file for full list)

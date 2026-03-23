@@ -1,0 +1,10 @@
+{
+  "name": "C&J Well co",
+  "short_name": "C&J Well co",
+  "description": "Well Viewer — search by address, coordinates, or use your location to see DNR wells within 2 miles.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

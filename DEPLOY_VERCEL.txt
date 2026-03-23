@@ -1,0 +1,23 @@
+DEPLOY WELL VIEWER TO VERCEL (new project)
+=========================================
+
+Run in Terminal:
+
+  cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+  npx vercel
+
+When Vercel asks:
+
+  "Link to existing project?"
+  → Type  N  and press Enter   (do NOT choose "yes" or the claude-suite project)
+
+  "What's your project's name?"
+  → Type  dnr-well-viewer  (or any name) and press Enter
+
+Vercel will create a NEW project and give you a URL like:
+  https://dnr-well-viewer-xxxx.vercel.app
+
+Open that URL in Safari on your phone — the map will work.
+
+If you choose "Link to existing project? yes" and pick 9kkjpgv47s-cpu-claude-suite-mobile,
+you will get the ".next" error. Always choose NO so this folder gets its own project.

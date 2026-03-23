@@ -1,0 +1,60 @@
+================================================================================
+HOST CHUNKS SEPARATELY — Don't upload chunks to Vercel
+================================================================================
+Vercel deploys the whole repo. If you add all chunk files, it "uploads them
+all at once" and can hit size limits. Fix: host the chunk files elsewhere and
+point the app at that URL. Deploy only the app (HTML/JS) to Vercel.
+
+STEP 1 — Create chunk files (on your machine)
+--------------------------------------------------------------------------------
+  cd "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo"
+  python3 chunk_dnr_csv.py dnr_wells_full.csv
+
+You get: dnr_wells_chunk_0.csv.gz, dnr_wells_chunk_1.csv.gz, ...
+
+STEP 2 — Upload chunks to a host (pick one)
+--------------------------------------------------------------------------------
+
+Option A — Cloudflare R2 (free tier, no credit card for small use)
+  1. Go to cloudflare.com → R2 Object Storage → Create bucket (e.g. "dnr-wells").
+  2. Make the bucket public: R2 → bucket → Settings → Public access.
+  3. Upload all dnr_wells_chunk_*.csv.gz to the bucket.
+  4. Copy the public bucket URL (e.g. https://pub-xxxxx.r2.dev).
+  5. Your chunk URLs will be: https://pub-xxxxx.r2.dev/dnr_wells_chunk_0.csv.gz, etc.
+     So base URL = "https://pub-xxxxx.r2.dev/" (with trailing slash).
+
+Option B — AWS S3
+  1. Create a bucket, enable public read for the objects (or use a CloudFront URL).
+  2. Upload dnr_wells_chunk_*.csv.gz.
+  3. Base URL = your bucket URL, e.g. "https://your-bucket.s3.amazonaws.com/" or
+     "https://your-distribution.cloudfront.net/".
+
+Option C — Any static host
+  Upload the chunk files to Netlify Drop, GitHub Pages, or any server that
+  serves static files. Set DNR_CHUNK_BASE_URL to that base URL (with trailing slash).
+
+STEP 3 — Set the base URL in the app
+--------------------------------------------------------------------------------
+Open "C&J Well Viewer.html" in an editor. Find this line (near the top of the script):
+
+  var DNR_CHUNK_BASE_URL = '';
+
+Change it to your base URL, for example:
+
+  var DNR_CHUNK_BASE_URL = 'https://pub-xxxxx.r2.dev/';
+
+Save. Rebuild the Phone viewer and index if you use them:
+
+  python3 build_from_local.py
+  cp "C&J Well Viewer - Phone.html" index.html
+
+STEP 4 — Deploy only the app to Vercel
+--------------------------------------------------------------------------------
+Do NOT add dnr_wells_chunk_*.csv.gz to git (they are in .gitignore).
+
+  git add "C&J Well Viewer.html" index.html .gitignore
+  git commit -m "Load chunks from external URL"
+  git push
+  npx vercel --prod
+
+The app will fetch chunk 0, 1, 2, ... from your R2/S3 URL. No chunks on Vercel.

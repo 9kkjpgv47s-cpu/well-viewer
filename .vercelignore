@@ -1,0 +1,13 @@
+# Raw CSVs (too large)
+*.csv
+dnr_wells_slim.csv.gz
+marion_wells_unified.txt
+
+# Old chunks (replaced by statewide)
+dnr_wells_chunk_*.csv.gz
+marion_wells_chunk_*.csv.gz
+
+# Build scripts
+*.py
+*.txt
+!README.txt
