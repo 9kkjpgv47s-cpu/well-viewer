@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-03-20-g-pipeline-v2" />
+    <meta name="cj-build" content="2026-04-04-map-controls-search" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -25,7 +25,8 @@
         /* Map fills .map-shell only — shell is positioning context so overlays sit on the map (not below it when grid row is taller). */
         .map-shell { position: relative; width: 100%; height: 72vh; min-height: 280px; border-radius: 20px; overflow: visible; }
         #map { height: 100%; width: 100%; border-radius: 20px; background: #e5e7eb; z-index: 1; touch-action: none; -webkit-tap-highlight-color: transparent; }
-        #wellsList { height: 280px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        #wellsList { height: 280px; overflow-y: auto; -webkit-overflow-scrolling: touch; --cj-list-scale: 1; font-size: calc(0.875rem * var(--cj-list-scale, 1)); }
+        #wellsList .card { font-size: calc(0.875rem * var(--cj-list-scale, 1)); }
         .card { transition: transform 0.2s, box-shadow 0.2s; }
         .card:active { transform: translateY(-1px); }
         .zoom-btn { width: 36px; height: 36px; border: none; background: #fff; cursor: pointer; }
@@ -277,6 +278,17 @@
         }
         .combo-marker .cm-row { padding: 0 3px; }
         .leaflet-container .map-zoom-stack { position: absolute; bottom: 24px; right: 12px; z-index: 1100; }
+        .leaflet-container .map-list-size-stack {
+            position: absolute; bottom: 24px; right: 56px; z-index: 1100;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            background: rgba(255,255,255,0.96); border: 1px solid #e5e7eb; border-radius: 12px;
+            padding: 4px 2px 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+        }
+        .map-list-size-stack .map-chrome-caption {
+            font-size: 9px; font-weight: 700; color: #374151; line-height: 1.1; text-align: center;
+            max-width: 48px; padding: 0 2px;
+        }
+        .map-list-size-stack .zoom-btn { width: 34px; height: 30px; font-size: 1rem; }
     </style>
 </head>
 <body class="p-4 max-w-7xl mx-auto">
@@ -384,7 +396,7 @@
             </div>
 
             <h3 class="font-bold text-xl mb-1 text-gray-800">Wells on Screen (<span id="wellCount">0</span>)</h3>
-            <p class="text-xs text-gray-500 mb-1">Total Loaded: <span id="totalWells" class="font-medium text-emerald-700">0</span> — scroll to see all</p>
+            <p class="text-xs text-gray-500 mb-1">Total Loaded: <span id="totalWells" class="font-medium text-emerald-700">0</span> — scroll to see all. Use the <strong>sidebar text</strong> +/− on the map (left of map zoom) to resize these cards.</p>
             <div id="locationBanner" class="hidden mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900"></div>
             <div id="wellsList" class="space-y-3 text-sm pr-2 mb-6"></div>
         </div>
@@ -398,9 +410,15 @@
                         <div><div class="toggle-label" style="color:#dc2626;font-weight:700;">Hide well labels</div></div>
                     </div>
                 </div>
-                <div class="map-zoom-stack bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden">
-                    <button type="button" onclick="map && map.zoomIn()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100 border-b">＋</button>
-                    <button type="button" onclick="map && map.zoomOut()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100">－</button>
+                <div class="map-list-size-stack" role="group" aria-label="Well sidebar list text size">
+                    <span class="map-chrome-caption">Sidebar text</span>
+                    <button type="button" onclick="adjustWellListScale(1)" class="zoom-btn flex items-center justify-center font-bold hover:bg-gray-100 border-b" title="Larger well list text">＋</button>
+                    <button type="button" onclick="adjustWellListScale(-1)" class="zoom-btn flex items-center justify-center font-bold hover:bg-gray-100" title="Smaller well list text">－</button>
+                </div>
+                <div class="map-zoom-stack bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden" role="group" aria-label="Map zoom">
+                    <span class="map-chrome-caption" style="display:block;text-align:center;font-size:9px;font-weight:700;color:#374151;padding:4px 2px 0;line-height:1.1;">Map zoom</span>
+                    <button type="button" onclick="map && map.zoomIn()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100 border-b" title="Zoom in">＋</button>
+                    <button type="button" onclick="map && map.zoomOut()" class="zoom-btn flex items-center justify-center text-xl font-bold hover:bg-gray-100" title="Zoom out">－</button>
                 </div>
             </div>
         </div>
@@ -409,16 +427,17 @@
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Search by address or place:</label>
                 <div class="flex gap-2">
-                    <input id="addressInput" type="text" placeholder="e.g. Indianapolis IN or 123 Main St, Avon" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <button id="btnAddressSearch" onclick="searchByAddress()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Search</button>
+                    <input id="addressInput" type="text" placeholder="e.g. Indianapolis IN or 123 Main St, Avon" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500" autocomplete="street-address" enterkeyhint="search">
+                    <button type="button" id="btnAddressSearch" onclick="searchByAddress()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Search</button>
                 </div>
             </div>
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Search by coordinates (lat, lon):</label>
                 <div class="flex gap-2">
-                    <input id="coordsInput" type="text" placeholder="39.7605, -86.4523" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <button onclick="goToCoords()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Go</button>
+                    <input id="coordsInput" type="text" placeholder="39.7605, -86.4523 (lat, lon)" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500" enterkeyhint="go">
+                    <button type="button" onclick="goToCoords()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Go</button>
                 </div>
+                <p class="text-xs text-gray-500 mt-1">Use decimal degrees. Separator: comma, semicolon, or space. Indiana is roughly lat 37–42°N, lon 84–89°W.</p>
             </div>
 
             <div class="mb-6 bg-gray-50 p-4 rounded-2xl">
@@ -482,7 +501,7 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-03-20-g-pipeline-v2';
+        var APP_BUILD_STAMP = '2026-04-04-map-controls-search';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
@@ -500,12 +519,20 @@
                 var c = map.getContainer();
                 var shell = document.querySelector('.map-shell');
                 var bar = shell ? shell.querySelector('.map-bottom-bar') : document.querySelector('.map-bottom-bar');
+                var listSz = shell ? shell.querySelector('.map-list-size-stack') : document.querySelector('.map-list-size-stack');
                 var zoom = shell ? shell.querySelector('.map-zoom-stack') : document.querySelector('.map-zoom-stack');
                 if (bar && bar.parentNode !== c) {
                     c.appendChild(bar);
                     if (typeof L !== 'undefined' && L.DomEvent) {
                         L.DomEvent.disableClickPropagation(bar);
                         L.DomEvent.disableScrollPropagation(bar);
+                    }
+                }
+                if (listSz && listSz.parentNode !== c) {
+                    c.appendChild(listSz);
+                    if (typeof L !== 'undefined' && L.DomEvent) {
+                        L.DomEvent.disableClickPropagation(listSz);
+                        L.DomEvent.disableScrollPropagation(listSz);
                     }
                 }
                 if (zoom && zoom.parentNode !== c) {
@@ -515,6 +542,74 @@
                         L.DomEvent.disableScrollPropagation(zoom);
                     }
                 }
+            });
+        }
+
+        var wellListFontStep = 1;
+        var WELL_LIST_FONT_STEPS = [0.82, 0.92, 1, 1.12, 1.24, 1.36];
+        function getWellListScale() { return WELL_LIST_FONT_STEPS[wellListFontStep]; }
+        function adjustWellListScale(delta) {
+            wellListFontStep = Math.max(0, Math.min(WELL_LIST_FONT_STEPS.length - 1, wellListFontStep + delta));
+            var el = document.getElementById('wellsList');
+            if (el) el.style.setProperty('--cj-list-scale', String(getWellListScale()));
+            try { localStorage.setItem('cjWellListScaleStep', String(wellListFontStep)); } catch (e) {}
+        }
+        function initWellListScaleFromStorage() {
+            try {
+                var s = parseInt(localStorage.getItem('cjWellListScaleStep'), 10);
+                if (!isNaN(s) && s >= 0 && s < WELL_LIST_FONT_STEPS.length) wellListFontStep = s;
+            } catch (e) {}
+            var el = document.getElementById('wellsList');
+            if (el) el.style.setProperty('--cj-list-scale', String(getWellListScale()));
+        }
+
+        function parseLatLonInput(raw) {
+            if (raw == null || String(raw).trim() === '') return null;
+            var s = String(raw).trim().replace(/\u00b0|\u00ba/g, '');
+            function stripCompass(numStr, isLat) {
+                var t = String(numStr).trim();
+                if (isLat) return parseFloat(t.replace(/^[nNsS]\s*|\s*[nNsS]$/gi, ''));
+                return parseFloat(t.replace(/^[eEwW]\s*|\s*[eEwW]$/gi, ''));
+            }
+            var lat, lon;
+            var semi = s.split(/[;,]/).map(function(x) { return x.trim(); }).filter(Boolean);
+            if (semi.length >= 2) {
+                lat = stripCompass(semi[0], true);
+                lon = stripCompass(semi[1], false);
+            }
+            if (lat == null || isNaN(lat) || lon == null || isNaN(lon)) {
+                var tokens = s.split(/\s+/).filter(Boolean);
+                if (tokens.length >= 2) {
+                    lat = stripCompass(tokens[0], true);
+                    lon = stripCompass(tokens[1], false);
+                }
+            }
+            if (lat == null || isNaN(lat) || lon == null || isNaN(lon)) return null;
+            if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+            /* Common mistake: longitude (e.g. −86) typed before latitude (~39) */
+            if (lat < 0 && lon > 0 && Math.abs(lat) > 40 && Math.abs(lon) < 45) {
+                var t = lat; lat = lon; lon = t;
+            } else if (Math.abs(lat) > 60 && Math.abs(lon) < 55) {
+                var t2 = lat; lat = lon; lon = t2;
+            }
+            return { lat: lat, lon: lon };
+        }
+
+        function nominatimSearchUrl(query) {
+            var base = 'https://nominatim.openstreetmap.org/search';
+            var p = new URLSearchParams();
+            p.set('q', query);
+            p.set('format', 'json');
+            p.set('limit', '5');
+            p.set('addressdetails', '0');
+            p.set('countrycodes', 'us');
+            return base + '?' + p.toString();
+        }
+
+        function applyLocationTypeTogglesForSearch() {
+            ['typeUncon', 'typeRock', 'typeEstimated'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && !el.checked) el.checked = true;
             });
         }
 
@@ -531,8 +626,21 @@
             map.on('moveend zoomend', function() { refreshMap(); });
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
+            initWellListScaleFromStorage();
             updateWellsList();
             setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); loadFullDnrDataset(); }, 200);
+            var addrEl = document.getElementById('addressInput');
+            if (addrEl) {
+                addrEl.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') { e.preventDefault(); searchByAddress(); }
+                });
+            }
+            var coordEl = document.getElementById('coordsInput');
+            if (coordEl) {
+                coordEl.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') { e.preventDefault(); goToCoords(); }
+                });
+            }
             var btnViewLog = document.getElementById('btnViewLog');
             if (btnViewLog) {
                 btnViewLog.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); viewFullDnrReport(); return false; });
@@ -1074,7 +1182,8 @@
             var body = JSON.stringify({ locations: points.map(function(p) { return { latitude: p.lat, longitude: p.lon }; }) });
             return fetch('https://api.open-elevation.com/api/v1/lookup', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: body
             }).then(function(r) { return r.json(); }).then(function(data) {
                 if (data && data.results && Array.isArray(data.results))
@@ -1231,10 +1340,6 @@
         }
 
         function getGroundElevations() {
-            if (window.location.protocol === 'file:') {
-                alert('Elevation works when you open this app from the web link (e.g. your Vercel URL). Open the live link in your browser for elevation.');
-                return;
-            }
             if (!searchCenter && !gpsPosition) {
                 alert('Use "Use My Location", address search, or coordinates first so we know where to get elevations.');
                 return;
@@ -1305,6 +1410,10 @@
 
         function useMyLocation() {
             if (!map) return;
+            if (!navigator.geolocation) {
+                alert('Geolocation is not available in this browser. Use address or coordinates instead.');
+                return;
+            }
             navigator.geolocation.getCurrentPosition(function(pos) {
                 gpsPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
                 userElevationM = null;
@@ -1318,10 +1427,14 @@
                         iconAnchor: [7, 7]
                     })
                 }).bindPopup('You are here').addTo(map);
+                applyLocationTypeTogglesForSearch();
                 addMarkersInRadius();
                 map.flyTo([gpsPosition.lat, gpsPosition.lon], 13);
                 updateWellsList();
-            }, function() { alert('Location permission denied. Use address or coordinates search.'); });
+            }, function(err) {
+                var msg = (err && err.code === 1) ? 'Location permission denied. Use address or coordinates search.' : 'Could not read your location. Check GPS / site permissions or use address or coordinates.';
+                alert(msg);
+            }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
         }
 
         function searchByAddress() {
@@ -1330,37 +1443,51 @@
             if (!input) { alert('Enter an address or place name.'); return; }
             var btn = document.getElementById('btnAddressSearch');
             if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
-            var q = encodeURIComponent(input);
-            fetch('https://nominatim.openstreetmap.org/search?q=' + q + '&format=json&limit=1', {
-                headers: { 'Accept': 'application/json' }
-            }).then(function(r) { return r.json(); }).then(function(data) {
+            var origin = '';
+            try { origin = window.location.origin || ''; } catch (e) {}
+            fetch(nominatimSearchUrl(input), {
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Language': 'en-US,en'
+                },
+                referrerPolicy: origin && origin !== 'null' ? 'strict-origin-when-cross-origin' : undefined
+            }).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function(data) {
                 if (btn) { btn.disabled = false; btn.textContent = 'Search'; }
-                if (!data || !data[0]) { alert('Address not found. Try a different search or use coordinates.'); return; }
-                var lat = parseFloat(data[0].lat);
-                var lon = parseFloat(data[0].lon);
-                if (isNaN(lat) || isNaN(lon)) { alert('Invalid result.'); return; }
+                if (!data || !data.length) { alert('Address not found. Try city and state (e.g. Avon, IN), spell out the street, or use coordinates.'); return; }
+                var pick = data[0];
+                var lat = parseFloat(pick.lat);
+                var lon = parseFloat(pick.lon);
+                if (isNaN(lat) || isNaN(lon)) { alert('Invalid result from geocoder.'); return; }
                 searchCenter = { lat: lat, lon: lon };
                 if (tempMarker) map.removeLayer(tempMarker);
                 tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
+                applyLocationTypeTogglesForSearch();
                 addMarkersInRadius();
                 map.flyTo([lat, lon], 13);
                 updateWellsList();
             }).catch(function() {
                 if (btn) { btn.disabled = false; btn.textContent = 'Search'; }
-                alert('Geocoding failed. Check internet or try coordinates.');
+                alert('Geocoding failed (network or service error). Check your connection, try again in a moment, or use coordinates.');
             });
         }
 
         function goToCoords() {
             if (!map) return;
-            var input = document.getElementById('coordsInput').value.trim().replace(/\s+/g, ' ');
-            if (!input) { alert('Enter coordinates!'); return; }
-            var parts = input.split(/[, ]+/).map(function(p) { return parseFloat(p); });
-            if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) { alert('Use format: 39.7605, -86.4523'); return; }
-            var lat = parts[0], lon = parts[1];
+            var input = document.getElementById('coordsInput').value.trim();
+            if (!input) { alert('Enter coordinates (latitude, then longitude).'); return; }
+            var parsed = parseLatLonInput(input);
+            if (!parsed) {
+                alert('Could not read coordinates. Use decimal degrees, for example: 39.7605, -86.4523 (latitude first, then longitude).');
+                return;
+            }
+            var lat = parsed.lat, lon = parsed.lon;
             searchCenter = { lat: lat, lon: lon };
             if (tempMarker) map.removeLayer(tempMarker);
             tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
+            applyLocationTypeTogglesForSearch();
             addMarkersInRadius();
             map.flyTo([lat, lon], 13);
             updateWellsList();
@@ -1822,7 +1949,6 @@
 
             if (!map) return;
             wellLayer.clearLayers();
-            if (tempMarker && map) { map.removeLayer(tempMarker); tempMarker = null; }
 
             var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
             if (hideWells) {
@@ -1866,11 +1992,9 @@
                 filtered = filtered.slice(0, maxMarkers);
             }
 
-            var rowCount = (showType ? 1 : 0) + (showElev ? 1 : 0) + (showYield ? 1 : 0);
             var zoom = map.getZoom();
             var zScale = Math.max(0.45, Math.min(1.45, 0.32 + (zoom - 7) * 0.09));
             var comboFs = Math.max(4.5, Math.round(6 * zScale * 10) / 10);
-            var dotSize = Math.max(10, Math.round(16 * zScale));
 
             filtered.forEach(function(w) {
                 var latNum = Number(w.lat), lonNum = Number(w.lon);
@@ -1887,75 +2011,52 @@
                     extraTag = ' r' + trVal;
                 }
 
-                if (rowCount >= 1 && mode) {
-                    var rows = [];
-                    var gROnCombo = false;
-                    if (showType) {
-                        var tc = wellTypeColor(w);
-                        var tl = wellTypeLabel(w);
-                        rows.push('<div class="cm-row" style="background:' + tc + '">' + tl + ' ' + depthStr + extraTag + '</div>');
-                        popupLines.push(tl + " · " + depthStr + (extraTag ? ' · ' + extraTag.trim() : ''));
-                        if (extraTag) gROnCombo = true;
-                    }
-                    if (showElev) {
-                        var be = getWellBottomElev(w);
-                        var beLabel = be != null ? be + "'" : '–';
-                        var eSuf = (!gROnCombo && extraTag) ? extraTag : '';
-                        if (eSuf) gROnCombo = true;
-                        rows.push('<div class="cm-row" style="background:' + elevColor(be) + '">' + beLabel + ' ASL' + eSuf + '</div>');
-                        popupLines.push("Bottom: " + (be != null ? be + " ft ASL" : "unknown") + (eSuf ? ' · ' + eSuf.trim() : ''));
-                    }
-                    if (showYield) {
-                        var gpm = getWellPumpRate(w);
-                        var gpmLabel = gpm != null ? gpm + ' gpm' : '–';
-                        var ySuf = (!gROnCombo && extraTag) ? extraTag : '';
-                        if (ySuf) gROnCombo = true;
-                        rows.push('<div class="cm-row" style="background:' + yieldColor(gpm) + '">' + gpmLabel + ySuf + '</div>');
-                        popupLines.push("Yield: " + (gpm != null ? gpm + " GPM" : "unknown") + (ySuf ? ' · ' + ySuf.trim() : ''));
-                    }
-                    if (!gROnCombo && extraTag) {
-                        rows.push('<div class="cm-row" style="background:#475569">' + extraTag.trim().replace(/</g, '') + '</div>');
-                        popupLines.push(extraTag.trim());
-                        gROnCombo = true;
-                    }
-                    if (!showType && w.depth) popupLines.push("Depth: " + w.depth + " ft");
-                    var longestText = 0;
-                    for (var ri = 0; ri < rows.length; ri++) {
-                        var stripped = rows[ri].replace(/<[^>]+>/g, '');
-                        if (stripped.length > longestText) longestText = stripped.length;
-                    }
-                    /* Compact label stack — no extra margin (was inflating divIcon hit box). */
-                    var charPx = comboFs * 0.5;
-                    var innerW = Math.max(24, Math.ceil(longestText * charPx + 6));
-                    var rowH = Math.max(9, Math.round(12 * zScale));
-                    var effRows = rows.length || rowCount;
-                    var innerH = Math.max(Math.round(10 * zScale), effRows * rowH);
-                    var padB = 3;
-                    var iconW = innerW + padB * 2;
-                    var iconH = innerH + padB * 2;
-                    var markerHtml = '<div class="combo-marker" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px">' + rows.join('') + '</div>';
-                    var marker = L.marker([latNum, lonNum], {
-                        icon: L.divIcon({ className: 'well-dot', html: markerHtml, iconSize: [iconW, iconH], iconAnchor: [Math.round(iconW / 2), Math.round(iconH / 2)] })
-                    }).bindPopup(popupLines.join("<br>"));
-                } else {
-                    var color = wellTypeColor(w);
-                    popupLines.push((depthVal != null && !isNaN(depthVal) ? depthVal : "—") + " ft" + (extraTag ? ' · ' + extraTag.trim() : ''));
-                    popupLines.push("<a href='https://maps.apple.com/?daddr=" + latNum + "," + lonNum + "' target='_blank'>Apple Maps</a> · <a href='https://www.google.com/maps/dir/?api=1&destination=" + latNum + "," + lonNum + "' target='_blank'>Google Maps</a>");
-                    var depthTxt = depthVal != null && !isNaN(depthVal) ? Math.round(depthVal).toString() : '–';
-                    var tagFs = Math.max(5, Math.round(7 * zScale));
-                    var tagEsc = extraTag ? String(extraTag).trim().replace(/</g, '').replace(/>/g, '') : '';
-                    var dotBlock = '<div style="display:flex;flex-direction:column;align-items:center;">' +
-                        '<div class="well-marker" style="background:' + color + ';width:' + dotSize + 'px;height:' + dotSize + 'px;flex-shrink:0;"><span class="well-depth-label" style="font-size:' + Math.max(6, Math.round(9 * zScale)) + 'px">' + depthTxt + '</span></div>' +
-                        (tagEsc ? '<div style="margin-top:1px;font-size:' + tagFs + 'px;font-weight:800;color:#0f172a;text-shadow:0 0 3px #fff,0 0 4px #fff;line-height:1.1;white-space:nowrap">' + tagEsc + '</div>' : '') +
-                        '</div>';
-                    var bw = tagEsc ? Math.max(dotSize, Math.min(130, Math.round(6 + tagEsc.length * tagFs * 0.52))) : dotSize;
-                    var bh = tagEsc ? dotSize + Math.round(tagFs + 8) : dotSize;
-                    var marker = L.marker([latNum, lonNum], {
-                        icon: L.divIcon({ className: 'well-dot',
-                            html: dotBlock,
-                            iconSize: [bw, bh], iconAnchor: [Math.round(bw / 2), Math.round(dotSize / 2)] })
-                    }).bindPopup(popupLines.join("<br>"));
+                var rows = [];
+                var gROnCombo = false;
+                var tc = wellTypeColor(w);
+                var tl = wellTypeLabel(w);
+                rows.push('<div class="cm-row" style="background:' + tc + '">' + tl + ' ' + depthStr + extraTag + '</div>');
+                popupLines.push(tl + " · " + depthStr + (extraTag ? ' · ' + extraTag.trim() : ''));
+                if (extraTag) gROnCombo = true;
+                if (showElev) {
+                    var be = getWellBottomElev(w);
+                    var beLabel = be != null ? be + "'" : '–';
+                    var eSuf = (!gROnCombo && extraTag) ? extraTag : '';
+                    if (eSuf) gROnCombo = true;
+                    rows.push('<div class="cm-row" style="background:' + elevColor(be) + '">' + beLabel + ' ASL' + eSuf + '</div>');
+                    popupLines.push("Bottom: " + (be != null ? be + " ft ASL" : "unknown") + (eSuf ? ' · ' + eSuf.trim() : ''));
                 }
+                if (showYield) {
+                    var gpm = getWellPumpRate(w);
+                    var gpmLabel = gpm != null ? gpm + ' gpm' : '–';
+                    var ySuf = (!gROnCombo && extraTag) ? extraTag : '';
+                    if (ySuf) gROnCombo = true;
+                    rows.push('<div class="cm-row" style="background:' + yieldColor(gpm) + '">' + gpmLabel + ySuf + '</div>');
+                    popupLines.push("Yield: " + (gpm != null ? gpm + " GPM" : "unknown") + (ySuf ? ' · ' + ySuf.trim() : ''));
+                }
+                if (!gROnCombo && extraTag) {
+                    rows.push('<div class="cm-row" style="background:#475569">' + extraTag.trim().replace(/</g, '') + '</div>');
+                    popupLines.push(extraTag.trim());
+                    gROnCombo = true;
+                }
+                popupLines.push("<a href='https://maps.apple.com/?daddr=" + latNum + "," + lonNum + "' target='_blank' rel='noopener'>Apple Maps</a> · <a href='https://www.google.com/maps/dir/?api=1&destination=" + latNum + "," + lonNum + "' target='_blank' rel='noopener'>Google Maps</a>");
+                var longestText = 0;
+                for (var ri = 0; ri < rows.length; ri++) {
+                    var stripped = rows[ri].replace(/<[^>]+>/g, '');
+                    if (stripped.length > longestText) longestText = stripped.length;
+                }
+                var charPx = comboFs * 0.5;
+                var innerW = Math.max(24, Math.ceil(longestText * charPx + 6));
+                var rowH = Math.max(9, Math.round(12 * zScale));
+                var effRows = rows.length || 1;
+                var innerH = Math.max(Math.round(10 * zScale), effRows * rowH);
+                var padB = 3;
+                var iconW = innerW + padB * 2;
+                var iconH = innerH + padB * 2;
+                var markerHtml = '<div class="combo-marker" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px">' + rows.join('') + '</div>';
+                var marker = L.marker([latNum, lonNum], {
+                    icon: L.divIcon({ className: 'well-dot', html: markerHtml, iconSize: [iconW, iconH], iconAnchor: [Math.round(iconW / 2), Math.round(iconH / 2)] })
+                }).bindPopup(popupLines.join("<br>"));
                 marker.on('click', function() { showDetailById(w.id); });
                 wellLayer.addLayer(marker);
             });
