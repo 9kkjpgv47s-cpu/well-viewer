@@ -1,4 +1,5 @@
-.vercel
+.vercel/*
+!.vercel/project.json
 .env*.local
 .DS_Store
 __pycache__/
@@ -6,6 +7,14 @@ __pycache__/
 .Python
 venv/
 .venv/
+# Local cache for DNR HTML lithology backfill (build_statewide_data.py).
+dnr_html_litho_cache.json
+dnr_html_litho_cache.json.tmp
+
+# Driller Dashboard local smoke tests (optional)
+_driller_sample_viewer/
+_driller_sample_out.jsonl.gz
+
 # Large source CSV stays local; only the 2 gzipped chunks are committed and deployed.
 dnr_wells_full.csv
 dnr_wells_slim.csv

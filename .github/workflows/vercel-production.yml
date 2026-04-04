@@ -1,0 +1,26 @@
+# Deploys production when main updates. Requires a repo secret: VERCEL_TOKEN
+# (Vercel → Settings → Tokens). Project/org IDs match .vercel/project.json.
+name: Vercel Production
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-prod-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::notice::VERCEL_TOKEN secret not set — add it under Repo → Settings → Secrets to auto-deploy production."
+            exit 0
+          fi
+          npx vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
