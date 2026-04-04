@@ -1,0 +1,23 @@
+---
+description: Keep well-viewer standalone; never merge Drill Hub into this repo
+alwaysApply: true
+---
+
+# Well Viewer vs Drill Hub (hard boundary)
+
+This repository is **only** the static **well viewer** plus Python ETL and `api/dnr-report.js`. The **Drill Hub** (Next.js app, scheduler, driller job sheet, `CJ_DRILLER_JOB_KEY`, `cj-hub-*` UI) lives in a **separate** repository or folder — never in this tree’s root `index.html`.
+
+## Do not
+
+- Add Drill Hub tabs, driller job localStorage, `cjSwitchHubTab`, `cjRenderDrillerPanel`, or hub-only CSS classes (e.g. `cj-hub-*`) to **`index.html`** here.
+- Copy the merged “hub + viewer” `index.html` from the hub repo **into** this repo without stripping all hub-only code.
+- Clone or vendor the hub app **inside** this repo as `well-driller-dash-board/` (or similar) and commit it — use two checkouts side by side on disk instead.
+
+## Do instead
+
+- **Hub embeds viewer:** In the hub project, copy/sync static viewer files into something like `public/well-viewer/` using that repo’s **sync script** (one direction: viewer → hub).
+- **Viewer changes:** Edit this repo’s `index.html` for map, chunks, filters, and DNR modal behavior only.
+
+## Quick smell test
+
+If `index.html` contains `CJ_DRILLER_JOB_KEY`, `cj-hub-bar`, or title text like “Drill Hub”, the projects have crossed — revert hub-only blocks or restore standalone `index.html` from git history before committing.

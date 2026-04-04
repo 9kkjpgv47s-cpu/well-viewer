@@ -7,8 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-03-drill-hub-scheduler-driller" />
-    <title>C&J Well co — Drill Hub & Well Viewer</title>
+    <meta name="cj-build" content="2026-04-04-standalone-well-viewer" />
+    <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="manifest" href="manifest.json">
@@ -278,22 +278,6 @@
         }
         .combo-marker .cm-row { padding: 2px 5px; }
         .leaflet-container .map-zoom-stack { position: absolute; bottom: 24px; right: 12px; z-index: 1100; }
-        /* Drill Hub: scheduler vs driller job sheet */
-        .cj-hub-bar { background: #fff; border-radius: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 0.5rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; justify-content: space-between; }
-        .cj-hub-tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-        .cj-hub-tab { border: none; cursor: pointer; padding: 0.65rem 1.1rem; border-radius: 0.75rem; font-weight: 600; font-size: 0.9rem; background: #f1f5f9; color: #334155; }
-        .cj-hub-tab:hover { background: #e2e8f0; }
-        .cj-hub-tab-active { background: #059669; color: #fff; }
-        .cj-hub-tab-active:hover { background: #047857; }
-        .cj-job-badge { display: inline-block; min-width: 1.25rem; text-align: center; background: rgba(255,255,255,0.25); border-radius: 999px; font-size: 0.75rem; padding: 0.1rem 0.4rem; margin-left: 0.25rem; }
-        .cj-hub-tab:not(.cj-hub-tab-active) .cj-job-badge { background: #dcfce7; color: #166534; }
-        #cjDrillerPanel { margin-bottom: 1rem; }
-        .cj-job-card { border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1rem; margin-bottom: 0.75rem; background: #fff; }
-        .cj-job-card textarea { width: 100%; min-height: 4.5rem; margin-top: 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid #d1d5db; border-radius: 0.5rem; font-family: inherit; font-size: 0.875rem; resize: vertical; }
-        .cj-btn-job { font-size: 0.7rem; font-weight: 700; padding: 0.35rem 0.55rem; border-radius: 0.5rem; border: none; cursor: pointer; background: #d97706; color: #fff; white-space: nowrap; }
-        .cj-btn-job:hover { background: #b45309; }
-        .cj-btn-job-secondary { background: #e5e7eb; color: #1f2937; }
-        .cj-btn-job-secondary:hover { background: #d1d5db; }
         #modalFooter { flex-wrap: wrap; }
         #modalFooter button { flex: 1 1 140px !important; }
     </style>
@@ -327,28 +311,9 @@
     </div>
     <div class="bg-red-700 text-white p-8 rounded-3xl text-center mb-8">
         <h1 class="text-4xl font-bold banner-title-cj">C&J WELL CO</h1>
-        <p class="text-white mt-1" style="opacity:0.95;">Drill Hub • Full well viewer + scheduler and driller job list with per-well notes</p>
+        <p class="text-white mt-1" style="opacity:0.95;">Indiana DNR wells — map, search, filters, and full DNR detail report</p>
     </div>
-    <div id="cjHubBar" class="cj-hub-bar max-w-7xl mx-auto" style="max-width:80rem;margin-left:auto;margin-right:auto;">
-        <div class="cj-hub-tabs" role="tablist" aria-label="Drill hub">
-            <button type="button" class="cj-hub-tab cj-hub-tab-active" id="cjTabScheduler" role="tab" aria-selected="true" onclick="cjSwitchHubTab('scheduler')">Scheduler</button>
-            <button type="button" class="cj-hub-tab" id="cjTabDriller" role="tab" aria-selected="false" onclick="cjSwitchHubTab('driller')">Driller job<span class="cj-job-badge" id="cjJobCountBadge">0</span></button>
-        </div>
-        <p class="text-xs text-gray-500" style="margin:0;max-width:28rem;">Scheduler: plan with the full map and filters. Driller: queued wells, isolated notes each, open any well for the same DNR detail modal.</p>
-    </div>
-    <div id="cjDrillerPanel" class="hidden max-w-7xl mx-auto">
-        <div class="bg-white rounded-3xl shadow p-6 mb-6">
-            <h2 class="text-xl font-bold text-emerald-800 mb-1">Driller job sheet</h2>
-            <p class="text-sm text-gray-600 mb-4">Wells added from the scheduler. Notes are saved per well on this device.</p>
-            <div class="flex flex-wrap gap-2 mb-4">
-                <button type="button" onclick="cjExportJobJson()" class="cj-btn-job-secondary py-2 px-4 rounded-xl font-medium text-sm" style="background:#e5e7eb;">Export JSON</button>
-                <button type="button" onclick="cjClearDrillerJob()" class="py-2 px-4 rounded-xl font-medium text-sm bg-red-100 text-red-800 hover:bg-red-200 border-0 cursor-pointer">Clear job</button>
-                <button type="button" onclick="cjSwitchHubTab('scheduler')" class="py-2 px-4 rounded-xl font-medium text-sm bg-emerald-100 text-emerald-900 hover:bg-emerald-200 border-0 cursor-pointer">Back to scheduler</button>
-            </div>
-            <div id="cjDrillerJobList"></div>
-        </div>
-    </div>
-    <div id="cjSchedulerShell" class="grid grid-cols-1 lg:grid-cols-12 gap-6" style="display: grid;">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6" style="display: grid;">
         <div class="order-1 lg:col-start-1 lg:col-span-4 lg:row-start-1 bg-white rounded-3xl shadow p-6 flex flex-col">
             <button onclick="useMyLocation()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-white py-4 rounded-2xl font-semibold text-lg mb-4 flex items-center justify-center gap-2 btn-location-text">
                 📍 Use My Location
@@ -495,7 +460,6 @@
             </div>
             <div id="modalFooter" class="modal-footer-buttons" style="display:flex; flex-direction:row; gap:1rem; align-items:center; width:100%; padding:1rem 1.5rem; border-top:1px solid #e5e7eb; flex-shrink:0; background:#fff;">
                 <button type="button" id="btnCloseModal" onclick="closeModal()" style="flex:1 1 0%; min-width:0; height:48px;" class="py-3 bg-gray-100 hover:bg-gray-200 rounded-2xl font-medium">Close</button>
-                <button type="button" id="btnAddToJob" onclick="addCurrentWellToJob()" style="flex:1 1 0%; min-width:0; height:48px;" class="py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-medium">Add to job</button>
                 <button type="button" id="btnViewLog" style="flex:1 1 0%; min-width:0; height:48px;" class="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-medium">View full DNR detailed report</button>
             </div>
         </div>
@@ -503,214 +467,10 @@
 
     <script>
         let selectedWellForLog = null;
-        var CJ_DRILLER_JOB_KEY = 'cjDrillerJobV1';
-        var cjDrillerJob = [];
-        (function cjLoadDrillerJobInitial() {
-            try {
-                var raw = localStorage.getItem(CJ_DRILLER_JOB_KEY);
-                if (!raw) return;
-                var p = JSON.parse(raw);
-                if (Array.isArray(p)) cjDrillerJob = p;
-            } catch (e) {}
-        })();
-        function cjSaveDrillerJob() {
-            try {
-                localStorage.setItem(CJ_DRILLER_JOB_KEY, JSON.stringify(cjDrillerJob));
-            } catch (e) {}
-            cjUpdateJobBadge();
-            cjRenderDrillerPanel();
-        }
-        function cjSnapshotWell(w) {
-            if (!w) return null;
-            return {
-                id: w.id,
-                refno: w.refno,
-                lat: w.lat,
-                lon: w.lon,
-                county: w.county,
-                depth: w.depth,
-                aquifer: w.aquifer,
-                owner: w.owner,
-                report: w.report,
-                loc_type: w.loc_type,
-                lithology_json: w.lithology_json
-            };
-        }
-        function resolveWellForDisplay(id) {
-            var w = wells.find(function(well) { return well.id === id; });
-            if (w) return w;
-            var ji = cjDrillerJob.find(function(j) { return j.wellId === id; });
-            if (ji && ji.snap) {
-                var o = Object.assign({}, ji.snap);
-                if (!o.id) o.id = ji.wellId;
-                return o;
-            }
-            return null;
-        }
-        function cjFindJobIndex(wellId) {
-            for (var i = 0; i < cjDrillerJob.length; i++) {
-                if (cjDrillerJob[i].wellId === wellId) return i;
-            }
-            return -1;
-        }
-        function cjUpdateJobBadge() {
-            var b = document.getElementById('cjJobCountBadge');
-            if (b) b.textContent = String(cjDrillerJob.length);
-        }
-        function cjEscJobHtml(s) {
-            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-        function cjRenderDrillerPanel() {
-            var el = document.getElementById('cjDrillerJobList');
-            if (!el) return;
-            if (!cjDrillerJob.length) {
-                el.innerHTML = '<p class="text-gray-500 text-sm">No wells on this job yet. Open <strong>Scheduler</strong>, click a well, then <strong>Add to job</strong>, or use the list button on each well card.</p>';
-                return;
-            }
-            var html = '';
-            cjDrillerJob.forEach(function(entry, idx) {
-                var w = resolveWellForDisplay(entry.wellId);
-                var subParts = [];
-                if (w) {
-                    if (w.county) subParts.push(w.county);
-                    if (w.depth != null) subParts.push(w.depth + ' ft');
-                    if (w.owner) subParts.push(String(w.owner).slice(0, 48));
-                } else subParts.push('Snapshot only');
-                var safeId = String(entry.wellId).replace(/'/g, "\\'");
-                var taId = 'cjJobNotes_' + idx;
-                html += '<div class="cj-job-card">' +
-                    '<div class="flex flex-wrap justify-between gap-2 items-start">' +
-                    '<div class="min-w-0">' +
-                    '<div class="font-semibold text-emerald-800">' + cjEscJobHtml(entry.wellId) + '</div>' +
-                    '<div class="text-xs text-gray-500">' + cjEscJobHtml(subParts.join(' · ')) + '</div></div>' +
-                    '<div class="flex gap-2 shrink-0">' +
-                    '<button type="button" class="cj-btn-job cj-btn-job-secondary" onclick="showDetailById(\'' + safeId + '\')">Open well</button>' +
-                    '<button type="button" class="cj-btn-job" style="background:#b91c1c;" onclick="cjRemoveFromDrillerJob(\'' + safeId + '\')">Remove</button>' +
-                    '</div></div>' +
-                    '<label class="block text-xs font-medium text-gray-600 mt-2">Notes (this well only)</label>' +
-                    '<textarea id="' + taId + '" data-well-id="' + String(entry.wellId).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" onchange="cjOnJobNotesChange(this)" onblur="cjOnJobNotesChange(this)">' + cjEscJobHtml(entry.notes || '') + '</textarea>' +
-                    '</div>';
-            });
-            el.innerHTML = html;
-        }
-        function cjOnJobNotesChange(textarea) {
-            var id = textarea.getAttribute('data-well-id');
-            if (!id) return;
-            var ix = cjFindJobIndex(id);
-            if (ix < 0) return;
-            cjDrillerJob[ix].notes = textarea.value;
-            cjSaveDrillerJob();
-        }
-        function cjRemoveFromDrillerJob(wellId) {
-            var ix = cjFindJobIndex(wellId);
-            if (ix < 0) return;
-            cjDrillerJob.splice(ix, 1);
-            cjSaveDrillerJob();
-        }
-        function cjClearDrillerJob() {
-            if (!cjDrillerJob.length) return;
-            if (!confirm('Remove all wells and notes from this job?')) return;
-            cjDrillerJob = [];
-            cjSaveDrillerJob();
-        }
-        function cjExportJobJson() {
-            if (!cjDrillerJob.length) {
-                alert('Job is empty.');
-                return;
-            }
-            var payload = cjDrillerJob.map(function(e) {
-                return { wellId: e.wellId, notes: e.notes || '', addedAt: e.addedAt, snap: e.snap };
-            });
-            var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            var a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'cj-driller-job.json';
-            a.click();
-            URL.revokeObjectURL(a.href);
-        }
-        function cjSwitchHubTab(tab) {
-            var sched = document.getElementById('cjSchedulerShell');
-            var drill = document.getElementById('cjDrillerPanel');
-            var tS = document.getElementById('cjTabScheduler');
-            var tD = document.getElementById('cjTabDriller');
-            var loadPanel = document.getElementById('loadingDnrPanel');
-            var failPanel = document.getElementById('loadFailedPanel');
-            var chatTip = document.getElementById('chatTip');
-            if (tab === 'driller') {
-                if (sched) sched.classList.add('hidden');
-                if (drill) drill.classList.remove('hidden');
-                if (tS) { tS.classList.remove('cj-hub-tab-active'); tS.setAttribute('aria-selected', 'false'); }
-                if (tD) { tD.classList.add('cj-hub-tab-active'); tD.setAttribute('aria-selected', 'true'); }
-                cjRenderDrillerPanel();
-                if (map) setTimeout(function() { map.invalidateSize(); }, 100);
-            } else {
-                if (sched) sched.classList.remove('hidden');
-                if (drill) drill.classList.add('hidden');
-                if (tD) { tD.classList.remove('cj-hub-tab-active'); tD.setAttribute('aria-selected', 'false'); }
-                if (tS) { tS.classList.add('cj-hub-tab-active'); tS.setAttribute('aria-selected', 'true'); }
-                if (map) setTimeout(function() { map.invalidateSize(); refreshMap(); }, 100);
-            }
-        }
-        function updateAddToJobButton() {
-            var btn = document.getElementById('btnAddToJob');
-            if (!btn) return;
-            var w = selectedWellForLog;
-            if (!w || !w.id) {
-                btn.disabled = true;
-                btn.textContent = 'Add to job';
-                btn.classList.add('opacity-50');
-                return;
-            }
-            btn.disabled = false;
-            btn.classList.remove('opacity-50');
-            if (cjFindJobIndex(w.id) >= 0) {
-                btn.textContent = 'On job ✓';
-                btn.classList.remove('bg-amber-600', 'hover:bg-amber-700');
-                btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
-            } else {
-                btn.textContent = 'Add to job';
-                btn.classList.add('bg-amber-600', 'hover:bg-amber-700');
-                btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
-            }
-        }
-        function addCurrentWellToJob() {
-            if (!selectedWellForLog || !selectedWellForLog.id) return;
-            if (cjFindJobIndex(selectedWellForLog.id) >= 0) {
-                cjSwitchHubTab('driller');
-                return;
-            }
-            addToDrillerJobFromId(selectedWellForLog.id);
-        }
-        function addToDrillerJobFromId(wellId) {
-            var w = resolveWellForDisplay(wellId);
-            if (!w) return;
-            if (cjFindJobIndex(wellId) >= 0) {
-                cjSwitchHubTab('driller');
-                return;
-            }
-            cjDrillerJob.push({
-                wellId: wellId,
-                notes: '',
-                addedAt: Date.now(),
-                snap: cjSnapshotWell(wells.find(function(x) { return x.id === wellId; }) || w)
-            });
-            cjSaveDrillerJob();
-            updateAddToJobButton();
-            try {
-                var t = document.getElementById('cjToastJob');
-                if (!t) {
-                    t = document.createElement('div');
-                    t.id = 'cjToastJob';
-                    t.style.cssText = 'position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#064e3b;color:#fff;padding:0.65rem 1.25rem;border-radius:999px;font-size:0.9rem;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);';
-                    document.body.appendChild(t);
-                }
-                t.textContent = 'Added to driller job';
-                t.style.opacity = '1';
-                clearTimeout(window._cjToastT);
-                window._cjToastT = setTimeout(function() { t.style.opacity = '0'; }, 2200);
-            } catch (e) {}
-        }
         let wells = [];
+        function resolveWellForDisplay(id) {
+            return wells.find(function(well) { return well.id === id; }) || null;
+        }
         let map = null;
         let gpsPosition = null;
         let tempMarker = null;
@@ -754,7 +514,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-03-drill-hub-scheduler-driller';
+        var APP_BUILD_STAMP = '2026-04-04-standalone-well-viewer';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
@@ -814,8 +574,6 @@
             map.on('moveend zoomend', function() { refreshMap(); });
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
-            cjUpdateJobBadge();
-            cjRenderDrillerPanel();
             updateWellsList();
             setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); loadFullDnrDataset(); }, 200);
             var btnViewLog = document.getElementById('btnViewLog');
@@ -934,7 +692,7 @@
             });
         }
 
-        var _cjHubParamsApplied = false;
+        var _cjViewerParamsApplied = false;
         function cjLocateOnMap(lat, lon) {
             if (!map) return;
             var la = Number(lat), lo = Number(lon);
@@ -946,23 +704,16 @@
             map.flyTo([la, lo], 13, CJ_FLY_OPTS);
             updateWellsList();
         }
-        function applyHubQueryParamsOnce() {
-            if (_cjHubParamsApplied || !map) return;
+        function applyViewerQueryParamsOnce() {
+            if (_cjViewerParamsApplied || !map) return;
             try {
                 var u = new URL(window.location.href);
                 var lat = parseFloat(u.searchParams.get('lat') || '');
                 var lon = parseFloat(u.searchParams.get('lon') || '');
-                var tab = u.searchParams.get('tab');
-                var did = false;
                 if (!isNaN(lat) && !isNaN(lon)) {
                     cjLocateOnMap(lat, lon);
-                    did = true;
+                    _cjViewerParamsApplied = true;
                 }
-                if (tab === 'driller') {
-                    cjSwitchHubTab('driller');
-                    did = true;
-                }
-                if (did) _cjHubParamsApplied = true;
             } catch (e) {}
         }
         if (typeof window !== 'undefined') {
@@ -971,7 +722,8 @@
                     var o = ev.origin || '';
                     if (o && o !== window.location.origin) return;
                     var d = ev.data;
-                    if (!d || d.type !== 'cj-hub-locate') return;
+                    if (!d) return;
+                    if (d.type !== 'cj-viewer-locate' && d.type !== 'cj-hub-locate') return;
                     var la = Number(d.lat), lo = Number(d.lon);
                     if (!isNaN(la) && !isNaN(lo)) cjLocateOnMap(la, lo);
                 } catch (err) {}
@@ -998,7 +750,7 @@
                     if (totalEl) totalEl.textContent = wells.length.toLocaleString();
                     updateWellsList();
                     if (typeof refreshMap === 'function') refreshMap();
-                    applyHubQueryParamsOnce();
+                    applyViewerQueryParamsOnce();
                 }, 50);
             }
             if (typeof Papa === 'undefined') {
@@ -1780,8 +1532,7 @@
                     html += '<div class="card bg-gray-50 p-4 rounded-2xl">' +
                         '<div class="flex justify-between items-start gap-2">' +
                         '<div class="min-w-0 flex-1 cursor-pointer" onclick="showDetailById(\'' + safeId + '\')"><div class="font-medium truncate">' + w.id + '</div>' + detailLine + elevLine + '</div>' +
-                        '<div class="text-right shrink-0 flex flex-col items-end gap-1">' + badgeHtml +
-                        '<button type="button" class="cj-btn-job" onclick="event.stopPropagation(); addToDrillerJobFromId(\'' + safeId + '\')">Add to job</button></div></div></div>';
+                        '<div class="text-right shrink-0 flex flex-col items-end gap-1">' + badgeHtml + '</div></div></div>';
                 });
                 if (!listToShow.length) {
                     html = mode ?
@@ -2175,14 +1926,12 @@
                 var h = buildSummaryHtml(w, dnr);
                 if (dist) h += '<div class="mt-6 pt-4 border-t text-xs text-gray-500"><strong>Distance from search point:</strong> ' + dist + '</div>';
                 document.getElementById('modalContent').innerHTML = h;
-                updateAddToJobButton();
             }
             document.getElementById('modalTitle').textContent = w.id;
             document.getElementById('modalContent').innerHTML = buildSummaryHtml(w, { loading: true });
             hideLogViewer();
             document.getElementById('wellModal').classList.remove('hidden');
             document.body.classList.add('modal-open');
-            updateAddToJobButton();
             var api = dnrApiUrl(refNo);
             var shardUrls = lithoShardUrls(refNo);
             if (hasLithCsv) {

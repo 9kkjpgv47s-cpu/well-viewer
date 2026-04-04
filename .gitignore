@@ -15,6 +15,11 @@ dnr_html_litho_cache.json.tmp
 _driller_sample_viewer/
 _driller_sample_out.jsonl.gz
 
+# Drill Hub is a separate repo — do not nest it here (avoids accidental commits / merged trees).
+well-driller-dash-board/
+well-driller-dashboard/
+apps/hub/
+
 # Large source CSV stays local; only the 2 gzipped chunks are committed and deployed.
 dnr_wells_full.csv
 dnr_wells_slim.csv
