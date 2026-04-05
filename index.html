@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-vercel-rewrite-github-chunks" />
+    <meta name="cj-build" content="2026-04-06-chunk-count-safari-g-warn" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -535,7 +535,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-vercel-rewrite-github-chunks';
+        var APP_BUILD_STAMP = '2026-04-06-chunk-count-safari-g-warn';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
@@ -752,6 +752,14 @@
         }
         function loadFullDnrDataset() {
             var CHUNK_HARD_LIMIT = 48;
+            /* Exactly how many dnr_wells_chunk_*.csv.gz files you deploy (0 .. count-1). Stops Safari/console
+             * noise from probing chunk_N+1 (404). Override: window.CJ_DNR_CHUNK_COUNT = 12; or -1 to probe until miss. */
+            var dnrChunkExpected = 8;
+            if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_COUNT != null) {
+                var nc = Number(window.CJ_DNR_CHUNK_COUNT);
+                if (nc === -1) dnrChunkExpected = null;
+                else if (!isNaN(nc) && nc >= 1) dnrChunkExpected = Math.floor(nc);
+            }
             var panel = document.getElementById('loadingDnrPanel');
             var status = document.getElementById('loadingDnrStatus');
             function finishLoad(msg, resetToBuiltin) {
@@ -792,6 +800,14 @@
                     }
                     return;
                 }
+                if (dnrChunkExpected != null && index >= dnrChunkExpected) {
+                    if (!loadedFromChunks) {
+                        finishLoad('No chunk data in range — showing ' + wells.length + ' built-in demo wells.', false);
+                    } else {
+                        finishLoad('Loaded ' + wells.length.toLocaleString() + ' wells.', false);
+                    }
+                    return;
+                }
                 var url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + index + DNR_CHUNK_SUFFIX;
                 if (status) status.textContent = 'Loading chunk ' + (index + 1) + '…';
                 var timeoutMs = 90000;
@@ -809,6 +825,19 @@
                         var parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
                         var rawRows = parsed.data || [];
                         var rawCount = rawRows.length;
+                        if (index === 0 && rawCount > 0) {
+                            var fnames = (parsed.meta && parsed.meta.fields) || [];
+                            var flo = fnames.map(function(f) { return String(f || '').toLowerCase().trim(); });
+                            var hasLithCol = flo.some(function(f) { return f === 'lithology_json' || f === 'lithology' || (f.indexOf('lithology') >= 0 && f.indexOf('json') >= 0); });
+                            var hasVeinCol = flo.some(function(f) {
+                                return /vein|gravel_thickness|g_vein|gravel_vein|gravel_interval|(^|_)g_ft$/.test(f);
+                            });
+                            if (!hasLithCol && !hasVeinCol) {
+                                try {
+                                    console.warn('[C&J] Chunks have no lithology_json or vein_* columns — gravel “g” tags cannot be computed. Rebuild with python3 rebuild_viewer_data.py (see chunk_dnr_csv.py header), then redeploy chunks.');
+                                } catch (e) {}
+                            }
+                        }
                         var rows = rawRows.map(function(row) {
                             try { return normalizeCsvRow(row); } catch (e) { return null; }
                         }).filter(Boolean);
@@ -1660,6 +1689,10 @@
 
         function useMyLocation() {
             if (!map) return;
+            if (!navigator.geolocation) {
+                alert('This browser does not support geolocation. Use address or coordinates search.');
+                return;
+            }
             navigator.geolocation.getCurrentPosition(function(pos) {
                 gpsPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
                 userElevationM = null;
@@ -1676,7 +1709,16 @@
                 addMarkersInRadius();
                 map.flyTo([gpsPosition.lat, gpsPosition.lon], 13, CJ_FLY_OPTS);
                 updateWellsList();
-            }, function() { alert('Location permission denied. Use address or coordinates search.'); });
+            }, function(err) {
+                var code = err && err.code;
+                var msg = 'Location unavailable. Use address or coordinates search.';
+                if (code === 1) {
+                    msg = 'Safari blocked location for this site. Settings → Websites → Location (or the lock icon in the address bar) → Allow for this page. You can also use address or coordinates search.';
+                } else if (code === 2 || code === 3) {
+                    msg = 'Could not read your position (GPS/timeout). Try again outdoors or use address/coordinates search.';
+                }
+                alert(msg);
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
         }
 
         function searchByAddress() {
