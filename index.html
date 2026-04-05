@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-g-csv-drift-ref" />
+    <meta name="cj-build" content="2026-04-06-yield-unknown-g-cons" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -231,6 +231,7 @@
         #yieldGreen:checked + .toggle-slider { background: #059669 !important; }
         #yieldOrange:checked + .toggle-slider { background: #d97706 !important; }
         #yieldRed:checked + .toggle-slider { background: #dc2626 !important; }
+        #yieldUnknown:checked + .toggle-slider { background: #9ca3af !important; }
         #typeUncon:checked + .toggle-slider { background: #2563eb !important; }
         #typeRock:checked + .toggle-slider { background: #dc2626 !important; }
         #typeBucket:checked + .toggle-slider { background: #f97316 !important; }
@@ -359,6 +360,10 @@
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
                     <label class="toggle-switch"><input type="checkbox" id="yieldRed" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
                     <div><div class="toggle-label" style="color:#dc2626;">&#9679; 50.01+ GPM</div></div>
+                </div>
+                <div class="toggle-wrap" style="padding:0.2rem 0;">
+                    <label class="toggle-switch"><input type="checkbox" id="yieldUnknown" checked onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
+                    <div><div class="toggle-label" style="color:#4b5563;">&#9679; No pump data / unknown</div></div>
                 </div>
             </div>
 
@@ -535,14 +540,16 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-g-csv-drift-ref';
+        var APP_BUILD_STAMP = '2026-04-06-yield-unknown-g-cons';
         /**
          * Gravel “g” + ft — no live DNR API for map tags:
          * 1) Per-ref map: WELL_G_FT_BY_REF (hardcoded ft next to WELL_GR_R_OVERRIDES).
          * 2) CSV vein columns: vein_size_ft, gravel_thickness_ft, aliases (see getVeinSizeFromCsvNumericColumns).
          * 3) lithology_json intervals (WellLogs / rebuild_viewer_data.py chunks).
-         * 4) If no lithology layers at all (slim registry chunks): registry drift (depth_bedrock, etc.) via
-         *    getDriftColumnFtFromCsv. Set window.CJ_G_USE_REGISTRY_DRIFT = false to disable that fallback.
+         * 4) No lithology (slim chunks): registry drift (depth_bedrock) via getDriftColumnFtFromCsv.
+         *    window.CJ_G_USE_REGISTRY_DRIFT = false disables it.
+         * 5) No lithology: casing + screen length capped by completed depth (registry rows usually have
+         *    casing_length while depth_bedrock is often blank). window.CJ_G_USE_CONSTRUCTION_FALLBACK = false to disable.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
         var elevationViewActive = false;
@@ -1237,9 +1244,24 @@
             return _rockFormations.test(l) && l.indexOf('sand and') === -1 && l.indexOf('gravel') === -1;
         }
 
+        /** Slim registry CSV: approximate producing interval from casing + screen when lithology and drift are missing. */
+        function getGravelConstructionFallbackFt(w) {
+            if (typeof window !== 'undefined' && window.CJ_G_USE_CONSTRUCTION_FALLBACK === false) return null;
+            var cl = parseFloat(w.casing_length || '');
+            if (isNaN(cl) || cl <= 0) return null;
+            var sl = parseFloat(w.screen_length || '');
+            var val = cl;
+            if (!isNaN(sl) && sl > 0) val = cl + sl;
+            var dep = getWellDisplayDepthFt(w);
+            if (dep == null || isNaN(dep)) dep = parseFloat(w.depth || '');
+            if (!isNaN(dep) && dep > 0 && val > dep) val = dep;
+            if (!(val > 0 && val < 2000)) return null;
+            return Math.round(val);
+        }
+
         /**
          * Gravel / producing-zone thickness for g label (ft). Order: WELL_G_FT_BY_REF → CSV vein columns →
-         * lithology intervals → (slim chunks only) registry drift via getDriftColumnFtFromCsv when no layers.
+         * lithology intervals → registry drift when no layers → casing+screen fallback.
          */
         function getGravelVeinDisplayFt(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
@@ -1264,6 +1286,8 @@
                 if (!lyr || !lyr.length) {
                     var drift = getDriftColumnFtFromCsv(w);
                     if (drift != null && drift > 0) return drift;
+                    var cons = getGravelConstructionFallbackFt(w);
+                    if (cons != null && cons > 0) return cons;
                 }
             }
             return null;
@@ -2188,15 +2212,16 @@
         }
 
         function yieldColor(gpm) {
-            if (gpm == null) return '#6b7280';
+            if (gpm == null || isNaN(Number(gpm)) || Number(gpm) <= 0) return '#6b7280';
             if (gpm <= 10) return '#1d4ed8';
             if (gpm <= 25) return '#059669';
             if (gpm <= 50) return '#d97706';
             return '#dc2626';
         }
 
+        /** Band for yield filter; missing/zero pump rate → 'unknown' (registry chunks often omit GPM). */
         function yieldRange(gpm) {
-            if (gpm == null || gpm <= 0) return null;
+            if (gpm == null || isNaN(Number(gpm)) || Number(gpm) <= 0) return 'unknown';
             if (gpm <= 10) return 'blue';
             if (gpm <= 25) return 'green';
             if (gpm <= 50) return 'orange';
@@ -2210,7 +2235,7 @@
         }
 
         function hasElevToggles() { return checkedIds(['elevBlue','elevGreen','elevOrange','elevRed']).length > 0; }
-        function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed']).length > 0; }
+        function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed','yieldUnknown']).length > 0; }
         function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry','typeEstimated']).length > 0; }
 
         function getActiveMode() {
@@ -2224,9 +2249,11 @@
 
         function getActiveRanges(mode) {
             var rangeMap = { elevBlue:'blue', elevGreen:'green', elevOrange:'orange', elevRed:'red',
-                            yieldBlue:'blue', yieldGreen:'green', yieldOrange:'orange', yieldRed:'red' };
+                            yieldBlue:'blue', yieldGreen:'green', yieldOrange:'orange', yieldRed:'red', yieldUnknown:'unknown' };
             var prefix = mode === 'elev' ? 'elev' : 'yield';
-            var ids = [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red'];
+            var ids = mode === 'elev'
+                ? [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red']
+                : [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red', 'yieldUnknown'];
             return checkedIds(ids).map(function(id) { return rangeMap[id]; });
         }
 
@@ -2414,8 +2441,8 @@
         function passesYieldFilter(w, yldRanges) {
             if (!yldRanges.length) return true;
             var gpm = getWellPumpRate(w);
-            if (gpm == null) return false;
-            return yldRanges.indexOf(yieldRange(gpm)) !== -1;
+            var band = yieldRange(gpm);
+            return yldRanges.indexOf(band) !== -1;
         }
 
         /** Max chip size (px) for combo markers — larger budget when only one filter row, tighter for stacks. */
