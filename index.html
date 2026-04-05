@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-yield-unknown-g-cons" />
+    <meta name="cj-build" content="2026-04-06-g-no-full-depth" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -540,7 +540,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-yield-unknown-g-cons';
+        var APP_BUILD_STAMP = '2026-04-06-g-no-full-depth';
         /**
          * Gravel “g” + ft — no live DNR API for map tags:
          * 1) Per-ref map: WELL_G_FT_BY_REF (hardcoded ft next to WELL_GR_R_OVERRIDES).
@@ -548,8 +548,8 @@
          * 3) lithology_json intervals (WellLogs / rebuild_viewer_data.py chunks).
          * 4) No lithology (slim chunks): registry drift (depth_bedrock) via getDriftColumnFtFromCsv.
          *    window.CJ_G_USE_REGISTRY_DRIFT = false disables it.
-         * 5) No lithology: casing + screen length capped by completed depth (registry rows usually have
-         *    casing_length while depth_bedrock is often blank). window.CJ_G_USE_CONSTRUCTION_FALLBACK = false to disable.
+         * 5) Thin registry drift only: depth_bedrock (etc.) must be clearly less than completed depth — never
+         *    use values that match total hole depth as g. Rebuild chunks with vein_size_ft / lithology_json for accuracy.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
         var elevationViewActive = false;
@@ -1244,24 +1244,25 @@
             return _rockFormations.test(l) && l.indexOf('sand and') === -1 && l.indexOf('gravel') === -1;
         }
 
-        /** Slim registry CSV: approximate producing interval from casing + screen when lithology and drift are missing. */
-        function getGravelConstructionFallbackFt(w) {
-            if (typeof window !== 'undefined' && window.CJ_G_USE_CONSTRUCTION_FALLBACK === false) return null;
-            var cl = parseFloat(w.casing_length || '');
-            if (isNaN(cl) || cl <= 0) return null;
-            var sl = parseFloat(w.screen_length || '');
-            var val = cl;
-            if (!isNaN(sl) && sl > 0) val = cl + sl;
+        /**
+         * Reject g values that are just “completed depth” (misleading as vein / sand-gravel thickness).
+         * Registry drift and casing+screen sums often collapse to total depth — those must not become map g.
+         */
+        function gThicknessIsPlausibleVsCompletedDepth(gVal, w) {
+            if (gVal == null || gVal <= 0) return false;
             var dep = getWellDisplayDepthFt(w);
-            if (dep == null || isNaN(dep)) dep = parseFloat(w.depth || '');
-            if (!isNaN(dep) && dep > 0 && val > dep) val = dep;
-            if (!(val > 0 && val < 2000)) return null;
-            return Math.round(val);
+            if (dep == null || isNaN(dep) || dep <= 0) return true;
+            dep = Number(dep);
+            if (gVal > dep + 0.5) return false;
+            if (gVal >= dep - 1.5) return false;
+            if (dep >= 15 && gVal / dep >= 0.92) return false;
+            return true;
         }
 
         /**
          * Gravel / producing-zone thickness for g label (ft). Order: WELL_G_FT_BY_REF → CSV vein columns →
-         * lithology intervals → registry drift when no layers → casing+screen fallback.
+         * lithology_json intervals → thin registry drift (depth_bedrock &lt; completed depth, not ~full hole).
+         * No casing+screen fallback — it matched total depth too often.
          */
         function getGravelVeinDisplayFt(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
@@ -1280,14 +1281,15 @@
             if (a != null && a > 0) lithoCand.push(a);
             if (b != null && b > 0) lithoCand.push(b);
             if (c != null && c > 0) lithoCand.push(c);
-            if (lithoCand.length) return Math.max.apply(null, lithoCand);
+            if (lithoCand.length) {
+                var mxL = Math.max.apply(null, lithoCand);
+                if (gThicknessIsPlausibleVsCompletedDepth(mxL, w)) return mxL;
+            }
             if (typeof window === 'undefined' || window.CJ_G_USE_REGISTRY_DRIFT !== false) {
                 var lyr = getLithLayers(w);
                 if (!lyr || !lyr.length) {
                     var drift = getDriftColumnFtFromCsv(w);
-                    if (drift != null && drift > 0) return drift;
-                    var cons = getGravelConstructionFallbackFt(w);
-                    if (cons != null && cons > 0) return cons;
+                    if (drift != null && drift > 0 && gThicknessIsPlausibleVsCompletedDepth(drift, w)) return drift;
                 }
             }
             return null;
