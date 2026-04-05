@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "buildCommand": null,
-  "outputDirectory": ".",
   "framework": null,
   "cleanUrls": true,
   "headers": [
@@ -10,8 +8,23 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
-      "source": "/C&J Well Viewer.html",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+      "source": "/manifest.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+    },
+    {
+      "source": "/icon.png",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, immutable" }]
+    },
+    {
+      "source": "/dnr_wells_chunk_:index.csv.gz",
+      "headers": [
+        { "key": "Content-Type", "value": "application/gzip" },
+        { "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }
+      ]
+    },
+    {
+      "source": "/litho_parts/:path*",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }]
     }
   ]
 }
