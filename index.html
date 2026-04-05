@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-05-dnr-chunks-dir" />
+    <meta name="cj-build" content="2026-04-05-root-dnr-chunks" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -504,18 +504,21 @@
 
         // Set to your chunk base URL to avoid deploying chunks to Vercel (e.g. S3, R2, or any CDN).
         // Leave empty to load chunks from the same origin as the app.
-        /* Chunks live in dnr-chunks/ in git (NOT public/ — Vercel "Other" uses public/ as sole static output and would omit root index.html). */
+        /*
+         * Chunk URLs: keep dnr_wells_chunk_*.csv.gz next to index.html in git (repo root for standalone;
+         * hub sync copies them beside public/well-viewer/index.html). Use empty base so fetch() resolves
+         * relative to the page (hub: /well-viewer/…; standalone: site root). Do not use a root public/
+         * folder for chunks only — Vercel "Other" treats public/ as the sole static output and omits
+         * root index.html. Do not use a dnr-chunks/ subfolder here — production builds did not serve that
+         * path (404) while root-level *.csv.gz (e.g. statewide_wells_chunk_0.csv.gz) did.
+         */
         var DNR_CHUNK_BASE_URL = '';
         (function cjSetChunkBaseUrl() {
             if (typeof window === 'undefined') return;
             if (window.CJ_CHUNK_BASE_URL != null && String(window.CJ_CHUNK_BASE_URL).trim() !== '') {
                 var b = String(window.CJ_CHUNK_BASE_URL).trim();
                 DNR_CHUNK_BASE_URL = b.slice(-1) === '/' ? b : b + '/';
-                return;
             }
-            var pn = (typeof location !== 'undefined') ? (location.pathname || '') : '';
-            /* Hub: sync copies chunks next to /well-viewer/index.html — no subfolder. */
-            DNR_CHUNK_BASE_URL = (pn.indexOf('/well-viewer') !== -1) ? '' : 'dnr-chunks/';
         })();
         /* Default chunk names from build_statewide_data.py / rebuild_viewer_data.py (DNR_CHUNK_FILE_PREFIX). */
         var DNR_CHUNK_PREFIX = 'dnr_wells_chunk_';
@@ -526,7 +529,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-05-dnr-chunks-dir';
+        var APP_BUILD_STAMP = '2026-04-05-root-dnr-chunks';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft

@@ -71,7 +71,7 @@ def main():
 
     print(f"\nTotal: {total_rows:,} rows in {chunk_index} chunk(s).")
     print("Deploy all dnr_wells_chunk_*.csv.gz files. The app will load and merge them.")
-    print("Vercel: mv dnr_wells_chunk_*.csv.gz dnr-chunks/  (do not use public/ — Vercel treats it as the only static root).")
+    print("Vercel: keep dnr_wells_chunk_*.csv.gz in repo root next to index.html (same as statewide chunks).")
 
 
 if __name__ == "__main__":

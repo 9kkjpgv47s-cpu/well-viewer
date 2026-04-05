@@ -1,6 +1,6 @@
 # C&J Well Viewer (DNR)
 
-Static Indiana DNR map (`index.html`) and Python ETL that produces `dnr_wells_chunk_*.csv.gz`. **Vercel:** keep deployable chunks under **`dnr-chunks/`** (URLs `/dnr-chunks/dnr_wells_chunk_N.csv.gz`). Do **not** use a root **`public/`** folder for chunks: with the “Other” preset, Vercel treats `public/` as the *only* static output directory, so your root `index.html` would not deploy and the site returns `NOT_FOUND`. After regenerating chunks in the repo root, run `mv dnr_wells_chunk_*.csv.gz dnr-chunks/` before commit/deploy.
+Static Indiana DNR map (`index.html`) and Python ETL that produces `dnr_wells_chunk_*.csv.gz`. **Vercel:** commit **`dnr_wells_chunk_*.csv.gz` in the repo root** next to `index.html` (same pattern as `statewide_wells_chunk_*.csv.gz`). A dedicated `dnr-chunks/` folder returned **404** on production while root-level `.csv.gz` files were served. Do **not** use a root **`public/`** folder for chunks only: with the “Other” preset, Vercel treats `public/` as the *only* static output directory, so root `index.html` would not deploy.
 
 ## Keeping this repo separate from Drill Hub
 
@@ -15,7 +15,7 @@ If `index.html` mentions “Drill Hub” or `cj-hub-bar`, the trees have crossed
 **Check:** `./scripts/verify-viewer-not-merged-with-hub.sh` — exits with an error if hub-only strings appear in root `index.html` (run before commit; wire into CI when ready).
 
 - **Run locally:** open **`index.html`** or `python3 -m http.server 8080` in this folder.
-- **Deploy to Vercel:** project root = this folder. Chunk files must live in **`dnr-chunks/dnr_wells_chunk_*.csv.gz`**. Run:
+- **Deploy to Vercel:** project root = this folder. Chunk files must be **`dnr_wells_chunk_*.csv.gz` at repo root** (or override `window.CJ_CHUNK_BASE_URL`). Run:
   - `npx vercel` (preview) or `npx vercel --prod` (production)
   - When linking, use a **dedicated** project for this app (see `DEPLOY_VERCEL.txt`).
 - **Regenerate `index.html`:** `python3 finalize_viewer_index.py` (optional).
