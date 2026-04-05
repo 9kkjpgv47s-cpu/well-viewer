@@ -23,7 +23,7 @@ jobs:
           VERCEL_PROJECT_ID: prj_fWZ3FX2H6kZIk23DEKL1MFMu6ed0
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::notice::VERCEL_TOKEN secret not set — add it under Repo → Settings → Secrets and variables → Actions to auto-deploy production on push."
+            echo "::notice::VERCEL_TOKEN secret not set — skipping CLI deploy. If production is stale vs GitHub main, add the token or use Vercel → Deployments → Redeploy for the latest commit."
             exit 0
           fi
           npx vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
