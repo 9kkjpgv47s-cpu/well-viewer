@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-g-no-full-depth" />
+    <meta name="cj-build" content="2026-04-11-cj-probe-fixture" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -18,6 +18,18 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- ?cj_probe=1 → fixtures/chunks/ only; &cj_dump=1 → JSON panel (scripts/viewer_probe.py). Before body reads CJ_CHUNK_BASE_URL. -->
+    <script>
+    (function () {
+        try {
+            var q = new URLSearchParams(window.location.search || '');
+            if (q.get('cj_probe') === '1') {
+                window.CJ_CHUNK_BASE_URL = new URL('fixtures/chunks/', window.location.href).href;
+                window.CJ_DNR_CHUNK_COUNT = 1;
+            }
+        } catch (e) {}
+    })();
+    </script>
     <!-- Embedded CSS: no Tailwind CDN — mobile/file viewers often block it; colors/links then break -->
     <style>
         *, *::before, *::after { box-sizing: border-box; }
@@ -231,7 +243,6 @@
         #yieldGreen:checked + .toggle-slider { background: #059669 !important; }
         #yieldOrange:checked + .toggle-slider { background: #d97706 !important; }
         #yieldRed:checked + .toggle-slider { background: #dc2626 !important; }
-        #yieldUnknown:checked + .toggle-slider { background: #9ca3af !important; }
         #typeUncon:checked + .toggle-slider { background: #2563eb !important; }
         #typeRock:checked + .toggle-slider { background: #dc2626 !important; }
         #typeBucket:checked + .toggle-slider { background: #f97316 !important; }
@@ -298,7 +309,7 @@
     <div id="loadingDnrPanel" class="p-4 mb-4 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-800 text-center">
         <strong>Loading full DNR dataset…</strong> <span id="loadingDnrStatus">Fetching CSV…</span>
     </div>
-    <div id="loadFailedPanel">
+    <div id="loadFailedPanel" hidden aria-hidden="true">
         <h3>Map didn’t load</h3>
         <p>Refresh the page or try another browser. If you opened this as a file on your device, use the live link instead (this app runs from the web).</p>
         <ol class="hidden">
@@ -360,10 +371,6 @@
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
                     <label class="toggle-switch"><input type="checkbox" id="yieldRed" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
                     <div><div class="toggle-label" style="color:#dc2626;">&#9679; 50.01+ GPM</div></div>
-                </div>
-                <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="yieldUnknown" checked onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
-                    <div><div class="toggle-label" style="color:#4b5563;">&#9679; No pump data / unknown</div></div>
                 </div>
             </div>
 
@@ -540,18 +547,20 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-g-no-full-depth';
+        var APP_BUILD_STAMP = '2026-04-11-g-csv-list-sync';
         /**
-         * Gravel “g” + ft — no live DNR API for map tags:
-         * 1) Per-ref map: WELL_G_FT_BY_REF (hardcoded ft next to WELL_GR_R_OVERRIDES).
-         * 2) CSV vein columns: vein_size_ft, gravel_thickness_ft, aliases (see getVeinSizeFromCsvNumericColumns).
-         * 3) lithology_json intervals (WellLogs / rebuild_viewer_data.py chunks).
-         * 4) No lithology (slim chunks): registry drift (depth_bedrock) via getDriftColumnFtFromCsv.
-         *    window.CJ_G_USE_REGISTRY_DRIFT = false disables it.
-         * 5) Thin registry drift only: depth_bedrock (etc.) must be clearly less than completed depth — never
-         *    use values that match total hole depth as g. Rebuild chunks with vein_size_ft / lithology_json for accuracy.
+         * Gravel “g” + ft — static CSV first; no live DNR API for map g.
+         * 1) WELL_G_FT_BY_REF overrides.
+         * 2) Production columns: vein_size_ft, gravel_thickness_ft, rock_start_ft (capped) from chunks.
+         * 3) Supplemental / lithology / registry drift — strict gThicknessIsPlausibleVsCompletedDepth.
+         * isUnconsolidatedWell: rock aquifers (sandstone, greensand, etc.) before “sand” substring match.
+         * Baked vein_size_ft: only impossible vs completed depth (not strict gThickness — thick real drift fails that).
+         * Map/list g from litho/supplemental/drift: off by default (set window.CJ_G_TAG_CSV_ONLY = false to re-enable).
+         * Drift off when CSV-only: implicit; or CJ_G_USE_REGISTRY_DRIFT = false when fallbacks on.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
+        /** When true (default): g tag uses manual ft + vein_size_ft / gravel_thickness / rock_start from chunks only. */
+        var CJ_G_TAG_CSV_ONLY = (typeof window !== 'undefined' && window.CJ_G_TAG_CSV_ONLY === false) ? false : true;
         var elevationViewActive = false;
         var yieldViewActive = false;
 
@@ -592,7 +601,11 @@
         function initMap() {
             if (typeof L === 'undefined') {
                 var el = document.getElementById('loadFailedPanel');
-                if (el) el.classList.add('show');
+                if (el) {
+                    el.removeAttribute('hidden');
+                    el.setAttribute('aria-hidden', 'false');
+                    el.classList.add('show');
+                }
                 return;
             }
             if (map) return;
@@ -763,12 +776,16 @@
             var CHUNK_HARD_LIMIT = 48;
             /* Exactly how many dnr_wells_chunk_*.csv.gz files you deploy (0 .. count-1). Stops Safari/console
              * noise from probing chunk_N+1 (404). Override: window.CJ_DNR_CHUNK_COUNT = 12; or -1 to probe until miss. */
-            var dnrChunkExpected = 8;
+            var dnrChunkExpected = 9;
             if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_COUNT != null) {
                 var nc = Number(window.CJ_DNR_CHUNK_COUNT);
                 if (nc === -1) dnrChunkExpected = null;
                 else if (!isNaN(nc) && nc >= 1) dnrChunkExpected = Math.floor(nc);
             }
+            try {
+                var chunk0Url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + '0' + DNR_CHUNK_SUFFIX;
+                console.info('[C&J] DNR chunks: expect', dnrChunkExpected == null ? '∞' : dnrChunkExpected, 'file(s); first URL:', chunk0Url, '| page:', String(location.href));
+            } catch (eLog) {}
             var panel = document.getElementById('loadingDnrPanel');
             var status = document.getElementById('loadingDnrStatus');
             function finishLoad(msg, resetToBuiltin) {
@@ -786,9 +803,23 @@
                 setTimeout(function() {
                     var totalEl = document.getElementById('totalWells');
                     if (totalEl) totalEl.textContent = wells.length.toLocaleString();
+                    if (typeof cjSummarizeGLabels === 'function') cjSummarizeGLabels();
                     updateWellsList();
                     if (typeof refreshMap === 'function') refreshMap();
                     applyViewerQueryParamsOnce();
+                    try {
+                        var uDump = new URL(window.location.href);
+                        if (uDump.searchParams.get('cj_dump') === '1' && typeof window.__cjProbeGLabels === 'function') {
+                            var old = document.getElementById('cj-probe-dump');
+                            if (old) old.remove();
+                            var pre = document.createElement('pre');
+                            pre.id = 'cj-probe-dump';
+                            pre.setAttribute('data-cj-probe', '1');
+                            pre.style.cssText = 'max-height:40vh;overflow:auto;background:#0f172a;color:#e2e8f0;padding:12px;font:12px/1.4 ui-monospace,monospace;z-index:99999;position:relative;margin:8px;border-radius:8px;';
+                            pre.textContent = JSON.stringify(window.__cjProbeGLabels(50000), null, 2);
+                            document.body.insertBefore(pre, document.body.firstChild);
+                        }
+                    } catch (eDump) {}
                 }, 50);
             }
             if (typeof Papa === 'undefined') {
@@ -839,7 +870,7 @@
                             var flo = fnames.map(function(f) { return String(f || '').toLowerCase().trim(); });
                             var hasLithCol = flo.some(function(f) { return f === 'lithology_json' || f === 'lithology' || (f.indexOf('lithology') >= 0 && f.indexOf('json') >= 0); });
                             var hasVeinCol = flo.some(function(f) {
-                                return /vein|gravel_thickness|g_vein|gravel_vein|gravel_interval|(^|_)g_ft$/.test(f);
+                                return /vein|gravel_thickness|rock_start|g_vein|gravel_vein|gravel_interval|(^|_)g_ft$/.test(f);
                             });
                             if (!hasLithCol && !hasVeinCol) {
                                 try {
@@ -1260,9 +1291,23 @@
         }
 
         /**
-         * Gravel / producing-zone thickness for g label (ft). Order: WELL_G_FT_BY_REF → CSV vein columns →
-         * lithology_json intervals → thin registry drift (depth_bedrock &lt; completed depth, not ~full hole).
-         * No casing+screen fallback — it matched total depth too often.
+         * vein_size_ft / gravel_thickness_ft / rock_start cap from chunks are pipeline output — do not apply
+         * gThicknessIsPlausibleVsCompletedDepth (it rejects common thick drift, e.g. g/depth > 0.92).
+         * Only drop values that cannot be a thickness inside the completed hole.
+         */
+        function gBakedProductionVeinSaneVsDepth(gVal, w) {
+            if (gVal == null || gVal <= 0) return false;
+            var dep = getWellDisplayDepthFt(w);
+            if (dep == null || isNaN(dep) || dep <= 0) return true;
+            dep = Number(dep);
+            if (gVal > dep + 0.5) return false;
+            if (gVal >= dep) return false;
+            return true;
+        }
+
+        /**
+         * Gravel / producing-zone thickness for g label (ft). Order: manual → production vein (baked in chunks) →
+         * supplemental → lithology → registry drift; litho/supplemental/drift use strict plausibility.
          */
         function getGravelVeinDisplayFt(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
@@ -1272,8 +1317,11 @@
             if (gManual != null && gManual !== '' && !isNaN(Number(gManual)) && Number(gManual) > 0) {
                 return Math.round(Number(gManual));
             }
-            var vCsv = getVeinSizeFromCsvNumericColumns(w);
-            if (vCsv != null) return vCsv;
+            var vProd = getProductionVeinSizeFtFromCsv(w);
+            if (vProd != null && gBakedProductionVeinSaneVsDepth(vProd, w)) return vProd;
+            if (CJ_G_TAG_CSV_ONLY) return null;
+            var vSup = getSupplementalVeinSizeFromCsvFt(w);
+            if (vSup != null) return vSup;
             var a = lastWaterBearingVeinThicknessFt(w);
             var b = sumAquiferThicknessAboveRockFt(w);
             var c = columnSandGravelTopToRockFt(w);
@@ -1286,11 +1334,8 @@
                 if (gThicknessIsPlausibleVsCompletedDepth(mxL, w)) return mxL;
             }
             if (typeof window === 'undefined' || window.CJ_G_USE_REGISTRY_DRIFT !== false) {
-                var lyr = getLithLayers(w);
-                if (!lyr || !lyr.length) {
-                    var drift = getDriftColumnFtFromCsv(w);
-                    if (drift != null && drift > 0 && gThicknessIsPlausibleVsCompletedDepth(drift, w)) return drift;
-                }
+                var drift = getDriftColumnFtFromCsv(w);
+                if (drift != null && drift > 0 && gThicknessIsPlausibleVsCompletedDepth(drift, w)) return drift;
             }
             return null;
         }
@@ -1314,11 +1359,10 @@
         }
 
         /**
-         * Map/list g or r suffix. Unconsolidated → g only from vein columns or lithology (never total depth).
-         * Bedrock → r from rock depth or completed depth fallback.
+         * Foundation: geology only — unconsolidated (gravel) → g when vein/litho thickness resolves;
+         * otherwise bedrock path → r (rock depth or completed-depth fallback). No dry/bucket/type gating here.
          */
         function wellGrRNumberForTag(w) {
-            if (isBucketWell(w) || isDryHole(w)) return null;
             if (isUnconsolidatedWell(w)) {
                 var gv = getGravelVeinDisplayFt(w);
                 if (gv != null && gv > 0) return { kind: 'g', n: Math.round(gv) };
@@ -1433,8 +1477,9 @@
             if (ov === 'unconsolidated') return true;
 
             var aq = (w.aquifer || "").toLowerCase();
-            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("sand") >= 0 || aq.indexOf("gravel") >= 0) return true;
-            if (aq.indexOf("bedrock") >= 0 || aq.indexOf("limestone") >= 0 || aq.indexOf("dolomite") >= 0 || aq.indexOf("shale") >= 0 || aq.indexOf("sandstone") >= 0 || aq.indexOf("siltstone") >= 0) return false;
+            /* Rock-like aquifers first — "sandstone"/"greensand" contain "sand" and must not classify as gravel. */
+            if (/\b(bedrock|limestone|dolomite|dolostone|shale|sandstone|siltstone|greensand|granite|marble|basalt|quartzite|chert|gneiss|schist|conglomerate)\b/.test(aq)) return false;
+            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("gravel") >= 0 || aq.indexOf("sand") >= 0) return true;
 
             var db = parseFloat(w.depth_bedrock || "");
             var depth = parseFloat(w.depth || "");
@@ -1463,6 +1508,7 @@
         }
 
         function isDryHole(w) {
+            /* Type filter + marker color only; does not suppress g/r tags (see wellGrRNumberForTag). */
             var blob = wellAnalyzerCommentsBlob(w);
             if (DRY_HOLE_COMMENT_RE.test(blob)) return true;
             var yieldGpm = getYieldGpmForWell(w);
@@ -1594,19 +1640,36 @@
                     var type = isUnconsolidatedWell(w) ? 'Gravel' : 'Rock';
                     var safeId = String(w.id).replace(/'/g, "\\'");
 
+                    var grnList = wellGrRNumberForTag(w);
                     var tagTrim = wellMapGrTag(w).replace(/^\s+/, '');
                     var dList = getWellDisplayDepthFt(w);
                     var coreLine = type + ' · ' + (dList != null ? dList : '—') + ' ft';
-                    var detailLine = tagTrim
-                        ? '<div class="text-xs text-gray-500"><strong class="text-slate-800">' + tagTrim + '</strong> · ' + coreLine + '</div>'
-                        : '<div class="text-xs text-gray-500">' + coreLine + '</div>';
+                    /* Prominent g/r line — same data as map markers; always shown when tag exists (even in elev/yield/type mode). */
+                    var tagProminent = '';
+                    if (grnList) {
+                        tagProminent = '<div class="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">' +
+                            '<span>' + grnList.kind + '</span><span class="text-lg">' + grnList.n + '</span>' +
+                            '<span class="text-xs text-gray-600 font-bold"> ft</span></div>';
+                    }
+                    var detailLine;
+                    if (!mode) {
+                        if (grnList) {
+                            detailLine = tagProminent + '<div class="text-xs text-gray-500 mt-0.5">' + coreLine + '</div>';
+                        } else {
+                            detailLine = tagTrim
+                                ? '<div class="text-xs text-gray-500"><strong class="text-slate-800">' + tagTrim + '</strong> · ' + coreLine + '</div>'
+                                : '<div class="text-xs text-gray-500">' + coreLine + '</div>';
+                        }
+                    } else {
+                        detailLine = '';
+                    }
                     var badgeHtml = '<div class="font-semibold text-emerald-600">' + dist + '</div>';
 
                     if (mode) {
                         var parts = [];
                         var badges = [];
                         var tagM = wellMapGrTag(w).replace(/^\s+/, '');
-                        if (tagM) parts.push('<strong class="text-slate-800">' + tagM + '</strong>');
+                        if (tagM && !grnList) parts.push('<strong class="text-slate-800 text-sm">' + tagM + '</strong>');
                         parts.push('<span style="color:' + wellTypeColor(w) + ';font-weight:600;">' + wellTypeLabel(w) + '</span>');
                         var dMode = getWellDisplayDepthFt(w);
                         if (dMode != null) parts.push(dMode + ' ft');
@@ -1622,7 +1685,8 @@
                             parts.push('<strong style="color:' + yieldColor(gpm) + '">' + gpmStr + '</strong>');
                             badges.push('<div class="font-bold" style="color:' + yieldColor(gpm) + ';font-size:10px;">' + (gpm != null ? gpm + ' gpm' : '–') + '</div>');
                         }
-                        detailLine = '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>';
+                        detailLine = tagProminent + '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>' +
+                            '<div class="text-xs text-gray-500 mt-0.5">' + coreLine + '</div>';
                         badgeHtml = '<div style="line-height:1.3;text-align:right;">' +
                             '<div class="font-semibold text-emerald-600">' + dist + '</div>' +
                             badges.join('') + '</div>';
@@ -2221,7 +2285,7 @@
             return '#dc2626';
         }
 
-        /** Band for yield filter; missing/zero pump rate → 'unknown' (registry chunks often omit GPM). */
+        /** Band for yield filter; missing/zero pump rate → 'unknown' (always passes when any GPM band is selected). */
         function yieldRange(gpm) {
             if (gpm == null || isNaN(Number(gpm)) || Number(gpm) <= 0) return 'unknown';
             if (gpm <= 10) return 'blue';
@@ -2237,7 +2301,7 @@
         }
 
         function hasElevToggles() { return checkedIds(['elevBlue','elevGreen','elevOrange','elevRed']).length > 0; }
-        function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed','yieldUnknown']).length > 0; }
+        function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed']).length > 0; }
         function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry','typeEstimated']).length > 0; }
 
         function getActiveMode() {
@@ -2251,11 +2315,11 @@
 
         function getActiveRanges(mode) {
             var rangeMap = { elevBlue:'blue', elevGreen:'green', elevOrange:'orange', elevRed:'red',
-                            yieldBlue:'blue', yieldGreen:'green', yieldOrange:'orange', yieldRed:'red', yieldUnknown:'unknown' };
+                            yieldBlue:'blue', yieldGreen:'green', yieldOrange:'orange', yieldRed:'red' };
             var prefix = mode === 'elev' ? 'elev' : 'yield';
             var ids = mode === 'elev'
                 ? [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red']
-                : [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red', 'yieldUnknown'];
+                : [prefix+'Blue', prefix+'Green', prefix+'Orange', prefix+'Red'];
             return checkedIds(ids).map(function(id) { return rangeMap[id]; });
         }
 
@@ -2324,24 +2388,64 @@
             return parseFloat(String(val).replace(/,/g, '').replace(/[^\d.\-]/g, ''));
         }
         /**
-         * Vein / gravel interval thickness from explicit CSV columns.
-         * Headers like "Vein Size", "Gravel Thickness (ft)" become keys with spaces; we match normalized names.
+         * Baked chunk columns from build_statewide_data.py (same trust as vein_size_ft): vein_size_ft,
+         * gravel_thickness_ft (often synced), rock_start_ft capped by completed depth.
          */
-        function getVeinSizeFromCsvNumericColumns(w) {
+        function getProductionVeinSizeFtFromCsv(w) {
+            if (!w || typeof w !== 'object') return null;
+            var n0 = _parseCsvFt(w.vein_size_ft);
+            if (!isNaN(n0) && n0 > 0) return Math.round(n0);
+            var pnames = Object.keys(w);
+            var pi, nn, nv;
+            for (pi = 0; pi < pnames.length; pi++) {
+                nn = _csvKeyNorm(pnames[pi]);
+                if (nn !== 'veinsizeft' && nn !== 'veinsize') continue;
+                nv = _parseCsvFt(w[pnames[pi]]);
+                if (!isNaN(nv) && nv > 0) return Math.round(nv);
+            }
+            var gt = _parseCsvFt(w.gravel_thickness_ft);
+            if (!isNaN(gt) && gt > 0) return Math.round(gt);
+            for (pi = 0; pi < pnames.length; pi++) {
+                nn = _csvKeyNorm(pnames[pi]);
+                if (nn !== 'gravelthicknessft' && nn !== 'gravelthickness') continue;
+                nv = _parseCsvFt(w[pnames[pi]]);
+                if (!isNaN(nv) && nv > 0) return Math.round(nv);
+            }
+            var rs = _parseCsvFt(w.rock_start_ft);
+            if (!isNaN(rs) && rs > 0) {
+                var capRs = capGravelColFt(rs, w);
+                if (capRs > 0) return capRs;
+            }
+            for (pi = 0; pi < pnames.length; pi++) {
+                nn = _csvKeyNorm(pnames[pi]);
+                if (nn !== 'rockstartft' && nn !== 'rockstart') continue;
+                nv = _parseCsvFt(w[pnames[pi]]);
+                if (!isNaN(nv) && nv > 0) return capGravelColFt(nv, w);
+            }
+            return null;
+        }
+        /**
+         * Other exported vein-like columns (may duplicate drift / column thickness in some datasets).
+         * Only values that pass gThicknessIsPlausibleVsCompletedDepth become g.
+         */
+        function getSupplementalVeinSizeFromCsvFt(w) {
             if (!w || typeof w !== 'object') return null;
             var exact = [
-                'gravel_thickness_ft', 'vein_size_ft', 'g_vein_ft', 'gravel_vein_ft', 'vein_thickness_ft', 'gravel_interval_ft',
+                'gravel_thickness_ft', 'g_vein_ft', 'gravel_vein_ft', 'vein_thickness_ft', 'gravel_interval_ft',
                 'g_ft', 'gravel_vein', 'gravel_vein_thickness', 'gravel_thickness',
                 'map_g_ft', 'g_map_ft', 'gravel_tag_ft', 'g_tag_ft', 'g_display_ft', 'cj_g_ft', 'sand_gravel_thickness_ft',
                 'unconsolidated_thickness_ft', 'producing_zone_ft', 'aquifer_thickness_ft'
             ];
             for (var ei = 0; ei < exact.length; ei++) {
                 var n0 = _parseCsvFt(w[exact[ei]]);
-                if (!isNaN(n0) && n0 > 0) return Math.round(n0);
+                if (!isNaN(n0) && n0 > 0) {
+                    var r0 = Math.round(n0);
+                    if (gThicknessIsPlausibleVsCompletedDepth(r0, w)) return r0;
+                }
             }
             var veinAliases = {
                 gravelthicknessft: 1, gravelthickness: 1, gravethickness: 1, gravelft: 1,
-                veinsizeft: 1, veinsize: 1, veinthicknessft: 1, veinthickness: 1, veinthick: 1,
+                veinthicknessft: 1, veinthickness: 1, veinthick: 1,
                 gravelveinft: 1, gravelvein: 1, gveinft: 1, gvein: 1, gthick: 1, gft: 1,
                 gravelintervalft: 1, gravelinterval: 1, sandgravelthick: 1, sandgravelthickness: 1,
                 sandgravelthicknessft: 1, unconsolidatedvein: 1, aquiferthicknessft: 1, producingzoneft: 1, screengravelft: 1,
@@ -2351,11 +2455,21 @@
             var pnames = Object.keys(w);
             for (var pi = 0; pi < pnames.length; pi++) {
                 var nn = _csvKeyNorm(pnames[pi]);
+                if (nn === 'veinsizeft' || nn === 'veinsize') continue;
                 if (!veinAliases[nn]) continue;
                 var nv = _parseCsvFt(w[pnames[pi]]);
-                if (!isNaN(nv) && nv > 0) return Math.round(nv);
+                if (!isNaN(nv) && nv > 0) {
+                    var rv = Math.round(nv);
+                    if (gThicknessIsPlausibleVsCompletedDepth(rv, w)) return rv;
+                }
             }
             return null;
+        }
+        /** Production vein first, then supplemental (plausibility-filtered). */
+        function getVeinSizeFromCsvNumericColumns(w) {
+            var p = getProductionVeinSizeFtFromCsv(w);
+            if (p != null) return p;
+            return getSupplementalVeinSizeFromCsvFt(w);
         }
         /**
          * Depth to top of rock / drift column (ft from surface), capped by completed depth — used when vein not precomputed.
@@ -2396,10 +2510,35 @@
 
         function getVeinSize(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
-            var fromCol = getVeinSizeFromCsvNumericColumns(w);
+            var prod = getProductionVeinSizeFtFromCsv(w);
+            if (prod != null && gBakedProductionVeinSaneVsDepth(prod, w)) return prod;
+            if (CJ_G_TAG_CSV_ONLY) return null;
+            var fromCol = getSupplementalVeinSizeFromCsvFt(w);
             if (fromCol != null) return fromCol;
             return lastWaterBearingVeinThicknessFt(w);
         }
+
+        /** One-line console stats after chunk load (first N wells) — use if g/r look missing. */
+        function cjSummarizeGLabels() {
+            if (!wells || !wells.length || (typeof window !== 'undefined' && window.CJ_SILENCE_G_SUMMARY)) return;
+            var cap = Math.min(wells.length, 10000);
+            var gC = 0, rC = 0, uncon = 0, unconNoG = 0, prodG = 0;
+            for (var si = 0; si < cap; si++) {
+                var ww = wells[si];
+                var t = wellGrRNumberForTag(ww);
+                if (t && t.kind === 'g') gC++;
+                else if (t && t.kind === 'r') rC++;
+                if (isUnconsolidatedWell(ww)) {
+                    uncon++;
+                    if (getProductionVeinSizeFtFromCsv(ww) != null) prodG++;
+                    if (!t || t.kind !== 'g') unconNoG++;
+                }
+            }
+            try {
+                console.info('[C&J] g/r sample first ' + cap + ' wells: g tags=' + gC + ', r tags=' + rC + ', uncon_class=' + uncon + ', uncon_missing_g=' + unconNoG + ', uncon_w_production_ft=' + prodG);
+            } catch (eSum) {}
+        }
+
         /** DevTools: __cjDebugG('DNR-975') or refno — shows whether lithology parsed and computed g/r. */
         window.__cjDebugG = function(idOrRef) {
             var w = wells.find(function(x) {
@@ -2412,6 +2551,8 @@
                     lithology_json_chars: (w.lithology_json && String(w.lithology_json).length) || 0,
                     intervals: layers ? layers.length : 0,
                     g_display: getGravelVeinDisplayFt(w),
+                    vein_ft_production: getProductionVeinSizeFtFromCsv(w),
+                    vein_ft_supplemental: getSupplementalVeinSizeFromCsvFt(w),
                     vein_ft_csv: getVeinSizeFromCsvNumericColumns(w),
                     drift_col_csv: getDriftColumnFtFromCsv(w),
                     g_manual_ref: (function() {
@@ -2425,12 +2566,71 @@
                     rock_top_math: getRockTopFtForGravelMath(w),
                     r_tag: getRockTagDepthFt(w),
                     uncon: isUnconsolidatedWell(w),
+                    aquifer: w.aquifer,
+                    gravel_thickness_ft: w.gravel_thickness_ft,
+                    rock_start_ft: w.rock_start_ft,
+                    depth_bedrock: w.depth_bedrock,
                     mapTag: wellMapGrTag(w),
                     grR: wellGrRNumberForTag(w),
                     bucket: isBucketWell(w)
                 });
             } catch (e) {}
             return w;
+        };
+
+        /**
+         * Automated probe + DevTools: __cjProbeGLabels(5000) → JSON summary (g/r counts, chunk base, per-well rows).
+         * Use with index.html?cj_probe=1 and scripts/viewer_probe.py, or paste in console on any deploy.
+         */
+        window.__cjProbeGLabels = function(scanLimit) {
+            var lim = scanLimit != null ? Math.min(wells.length, Math.max(0, Number(scanLimit))) : Math.min(wells.length, 10000);
+            var out = {
+                appBuildStamp: typeof APP_BUILD_STAMP !== 'undefined' ? APP_BUILD_STAMP : '',
+                chunkBaseUrl: typeof DNR_CHUNK_BASE_URL !== 'undefined' ? DNR_CHUNK_BASE_URL : '',
+                totalWells: wells.length,
+                scanned: lim,
+                g: 0,
+                r: 0,
+                none: 0,
+                uncon: 0,
+                unconWithProductionFt: 0,
+                unconWithGTag: 0,
+                unconMissingG: 0,
+                wells: []
+            };
+            var i;
+            for (i = 0; i < lim; i++) {
+                var w = wells[i];
+                var t = wellGrRNumberForTag(w);
+                if (t && t.kind === 'g') out.g++;
+                else if (t && t.kind === 'r') out.r++;
+                else out.none++;
+                if (isUnconsolidatedWell(w)) {
+                    out.uncon++;
+                    if (getProductionVeinSizeFtFromCsv(w) != null) out.unconWithProductionFt++;
+                    if (t && t.kind === 'g') out.unconWithGTag++;
+                    else out.unconMissingG++;
+                }
+            }
+            var detailCap = Math.min(40, wells.length);
+            for (i = 0; i < detailCap; i++) {
+                w = wells[i];
+                out.wells.push({
+                    id: w.id,
+                    refno: w.refno,
+                    aquifer: w.aquifer,
+                    depth: w.depth,
+                    depth_bedrock: w.depth_bedrock,
+                    vein_size_ft: w.vein_size_ft,
+                    gravel_thickness_ft: w.gravel_thickness_ft,
+                    productionFt: getProductionVeinSizeFtFromCsv(w),
+                    gravelDisplayFt: getGravelVeinDisplayFt(w),
+                    uncon: isUnconsolidatedWell(w),
+                    grR: wellGrRNumberForTag(w),
+                    mapTag: wellMapGrTag(w).trim()
+                });
+            }
+            return out;
         };
 
         function passesElevFilter(w, elevRanges) {
@@ -2444,6 +2644,8 @@
             if (!yldRanges.length) return true;
             var gpm = getWellPumpRate(w);
             var band = yieldRange(gpm);
+            /* No “unknown GPM” toggle — wells without pump data always stay visible when yield filters are on. */
+            if (band === 'unknown') return true;
             return yldRanges.indexOf(band) !== -1;
         }
 
@@ -2523,6 +2725,7 @@
 
             var elevRanges = showElev ? getElevRanges() : [];
             var yldRanges = showYield ? getYieldRanges() : [];
+            /* Cap dense views; prefer wells that already resolved g/r so tags stay visible. */
             var maxMarkers = 800;
             var filtered = [];
             for (var i = 0; i < pool.length; i++) {
@@ -2537,7 +2740,12 @@
             }
 
             if (filtered.length > maxMarkers) {
-                filtered.sort(function() { return 0.5 - Math.random(); });
+                filtered.sort(function(a, b) {
+                    var ha = wellGrRNumberForTag(a) ? 1 : 0;
+                    var hb = wellGrRNumberForTag(b) ? 1 : 0;
+                    if (ha !== hb) return hb - ha;
+                    return 0.5 - Math.random();
+                });
                 filtered = filtered.slice(0, maxMarkers);
             }
 
