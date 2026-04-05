@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-chunk-count-safari-g-warn" />
+    <meta name="cj-build" content="2026-04-06-g-csv-drift-ref" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -535,12 +535,14 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-chunk-count-safari-g-warn';
+        var APP_BUILD_STAMP = '2026-04-06-g-csv-drift-ref';
         /**
-         * Gravel “g” + ft — CSV only, no DNR API for this label:
-         * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
-         * 2) Else parse intervals from lithology_json / lithology cell text (JSON array in CSV).
-         * getVeinSize / getLithLayers never call fetch(); modal DNR API is unrelated to map g.
+         * Gravel “g” + ft — no live DNR API for map tags:
+         * 1) Per-ref map: WELL_G_FT_BY_REF (hardcoded ft next to WELL_GR_R_OVERRIDES).
+         * 2) CSV vein columns: vein_size_ft, gravel_thickness_ft, aliases (see getVeinSizeFromCsvNumericColumns).
+         * 3) lithology_json intervals (WellLogs / rebuild_viewer_data.py chunks).
+         * 4) If no lithology layers at all (slim registry chunks): registry drift (depth_bedrock, etc.) via
+         *    getDriftColumnFtFromCsv. Set window.CJ_G_USE_REGISTRY_DRIFT = false to disable that fallback.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
         var elevationViewActive = false;
@@ -1236,12 +1238,17 @@
         }
 
         /**
-         * Gravel / producing-zone thickness for g label (ft). Prefer baked CSV columns (vein_size_ft,
-         * gravel_thickness_ft); else lithology intervals on the row. Never use drift-to-rock or total
-         * depth — those are different numbers and looked like “g = full well depth” in preview.
+         * Gravel / producing-zone thickness for g label (ft). Order: WELL_G_FT_BY_REF → CSV vein columns →
+         * lithology intervals → (slim chunks only) registry drift via getDriftColumnFtFromCsv when no layers.
          */
         function getGravelVeinDisplayFt(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
+            var refKey = w.refno != null && w.refno !== '' ? String(w.refno).replace(/\.0+$/, '').trim() : '';
+            var idKey = w.id != null && w.id !== '' ? String(w.id).trim() : '';
+            var gManual = (refKey && WELL_G_FT_BY_REF[refKey]) || (idKey && WELL_G_FT_BY_REF[idKey]);
+            if (gManual != null && gManual !== '' && !isNaN(Number(gManual)) && Number(gManual) > 0) {
+                return Math.round(Number(gManual));
+            }
             var vCsv = getVeinSizeFromCsvNumericColumns(w);
             if (vCsv != null) return vCsv;
             var a = lastWaterBearingVeinThicknessFt(w);
@@ -1252,6 +1259,13 @@
             if (b != null && b > 0) lithoCand.push(b);
             if (c != null && c > 0) lithoCand.push(c);
             if (lithoCand.length) return Math.max.apply(null, lithoCand);
+            if (typeof window === 'undefined' || window.CJ_G_USE_REGISTRY_DRIFT !== false) {
+                var lyr = getLithLayers(w);
+                if (!lyr || !lyr.length) {
+                    var drift = getDriftColumnFtFromCsv(w);
+                    if (drift != null && drift > 0) return drift;
+                }
+            }
             return null;
         }
 
@@ -1355,6 +1369,25 @@
                 if (!Object.prototype.hasOwnProperty.call(byRef, kr)) continue;
                 o[kr] = byRef[kr];
                 o['DNR-' + kr] = byRef[kr];
+            }
+            return o;
+        })();
+
+        /**
+         * Optional map g ft baked by ref (same keys as overrides: refno string or DNR-123). Merged into chunks or hand-edited here.
+         */
+        var WELL_G_FT_BY_REF = (function() {
+            var byRef = {
+                /* example: '184649': 18, */
+            };
+            var o = Object.create(null);
+            for (var kr in byRef) {
+                if (!Object.prototype.hasOwnProperty.call(byRef, kr)) continue;
+                var n = Number(byRef[kr]);
+                if (!isNaN(n) && n > 0) {
+                    o[kr] = n;
+                    o['DNR-' + kr] = n;
+                }
             }
             return o;
         })();
@@ -2267,7 +2300,12 @@
          */
         function getVeinSizeFromCsvNumericColumns(w) {
             if (!w || typeof w !== 'object') return null;
-            var exact = ['gravel_thickness_ft', 'vein_size_ft', 'g_vein_ft', 'gravel_vein_ft', 'vein_thickness_ft', 'gravel_interval_ft', 'g_ft', 'gravel_vein', 'gravel_vein_thickness', 'gravel_thickness'];
+            var exact = [
+                'gravel_thickness_ft', 'vein_size_ft', 'g_vein_ft', 'gravel_vein_ft', 'vein_thickness_ft', 'gravel_interval_ft',
+                'g_ft', 'gravel_vein', 'gravel_vein_thickness', 'gravel_thickness',
+                'map_g_ft', 'g_map_ft', 'gravel_tag_ft', 'g_tag_ft', 'g_display_ft', 'cj_g_ft', 'sand_gravel_thickness_ft',
+                'unconsolidated_thickness_ft', 'producing_zone_ft', 'aquifer_thickness_ft'
+            ];
             for (var ei = 0; ei < exact.length; ei++) {
                 var n0 = _parseCsvFt(w[exact[ei]]);
                 if (!isNaN(n0) && n0 > 0) return Math.round(n0);
@@ -2275,9 +2313,11 @@
             var veinAliases = {
                 gravelthicknessft: 1, gravelthickness: 1, gravethickness: 1, gravelft: 1,
                 veinsizeft: 1, veinsize: 1, veinthicknessft: 1, veinthickness: 1, veinthick: 1,
-                gravelveinft: 1, gravelvein: 1, gveinft: 1, gvein: 1, gthick: 1,
+                gravelveinft: 1, gravelvein: 1, gveinft: 1, gvein: 1, gthick: 1, gft: 1,
                 gravelintervalft: 1, gravelinterval: 1, sandgravelthick: 1, sandgravelthickness: 1,
-                unconsolidatedvein: 1, aquiferthicknessft: 1, producingzoneft: 1, screengravelft: 1
+                sandgravelthicknessft: 1, unconsolidatedvein: 1, aquiferthicknessft: 1, producingzoneft: 1, screengravelft: 1,
+                mapgft: 1, gmapft: 1, graveltagft: 1, gtagft: 1, gdisplayft: 1, cjgft: 1,
+                unconsolidatedthicknessft: 1, producingzonethicknessft: 1, gravelmapft: 1
             };
             var pnames = Object.keys(w);
             for (var pi = 0; pi < pnames.length; pi++) {
@@ -2345,6 +2385,11 @@
                     g_display: getGravelVeinDisplayFt(w),
                     vein_ft_csv: getVeinSizeFromCsvNumericColumns(w),
                     drift_col_csv: getDriftColumnFtFromCsv(w),
+                    g_manual_ref: (function() {
+                        var rk = w.refno != null ? String(w.refno).replace(/\.0+$/, '').trim() : '';
+                        var ik = w.id != null ? String(w.id).trim() : '';
+                        return (rk && WELL_G_FT_BY_REF[rk]) || (ik && WELL_G_FT_BY_REF[ik]) || null;
+                    })(),
                     g_legacy: getVeinSize(w),
                     sum_above_rock: sumAquiferThicknessAboveRockFt(w),
                     col_to_rock: columnSandGravelTopToRockFt(w),
