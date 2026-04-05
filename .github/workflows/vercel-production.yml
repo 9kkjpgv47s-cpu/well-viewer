@@ -18,9 +18,12 @@ jobs:
       - name: Deploy to Vercel (production)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # Non-secret IDs; required for non-interactive deploy (same as .vercel/project.json).
+          VERCEL_ORG_ID: team_xCRfwzD66FrJzAL93imAv8pU
+          VERCEL_PROJECT_ID: prj_fWZ3FX2H6kZIk23DEKL1MFMu6ed0
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::notice::VERCEL_TOKEN secret not set — add it under Repo → Settings → Secrets to auto-deploy production."
+            echo "::notice::VERCEL_TOKEN secret not set — add it under Repo → Settings → Secrets and variables → Actions to auto-deploy production on push."
             exit 0
           fi
           npx vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
