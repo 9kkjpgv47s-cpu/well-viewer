@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-04-standalone-well-viewer" />
+    <meta name="cj-build" content="2026-04-04-refLon2-banner-fix" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -514,7 +514,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-04-standalone-well-viewer';
+        var APP_BUILD_STAMP = '2026-04-04-refLon2-banner-fix';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
@@ -1543,8 +1543,8 @@
                 }
                 document.getElementById('wellsList').innerHTML = html;
 
-                if (referencePosFinal && refLon2 != null && listToShow.length) {
-                    var nearestDist = haversine(referencePosFinal.lat, refLon2, listToShow[0].lat, listToShow[0].lon);
+                if (referencePosFinal && rLon2 != null && listToShow.length) {
+                    var nearestDist = haversine(referencePosFinal.lat, rLon2, listToShow[0].lat, listToShow[0].lon);
                     var bannerHtml = '<strong>Wells within ' + RADIUS_MI + ' mi</strong> — <strong>Nearest:</strong> ' + nearestDist + ' mi';
                     if (userElevationM != null) {
                         var refLabel = gpsPosition && searchCenter && searchCenter.lat === gpsPosition.lat && searchCenter.lon === (gpsPosition.lon != null ? gpsPosition.lon : gpsPosition.lng) ? 'Your ground elevation' : 'Reference elevation (search point)';
