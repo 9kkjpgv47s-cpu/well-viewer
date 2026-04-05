@@ -2,6 +2,12 @@
   "version": 2,
   "framework": null,
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/dnr_wells_chunk_:index.csv.gz",
+      "destination": "https://raw.githubusercontent.com/9kkjpgv47s-cpu/well-viewer/main/dnr_wells_chunk_:index.csv.gz"
+    }
+  ],
   "headers": [
     {
       "source": "/index.html",
