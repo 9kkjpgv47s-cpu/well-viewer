@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
-Split a large DNR wells CSV into 8 gzipped chunk files. Rows are SHUFFLED before
+Split a large DNR wells CSV into gzipped chunk files. Rows are SHUFFLED before
 chunking so each chunk has wells from all over Indiana (not just south or north).
 No data loss — the viewer fetches and merges all chunks.
+
+**Production / accurate g-labels:** run `python3 rebuild_viewer_data.py` instead.
+That merges WellLogs, adds vein_size_ft / lithology_json, and writes dnr_wells_chunk_*.csv.gz.
+This script only splits columns already present in the input CSV.
 
 Usage:
   python3 chunk_dnr_csv.py [input.csv]
 Default input: dnr_wells_full.csv (or run after fetch_dnr_wells.py)
 
-Output: dnr_wells_chunk_0.csv.gz ... dnr_wells_chunk_7.csv.gz
+Output: dnr_wells_chunk_0.csv.gz … (row count per MAX_ROWS_PER_CHUNK)
 """
 import csv
 import gzip
@@ -67,6 +71,7 @@ def main():
 
     print(f"\nTotal: {total_rows:,} rows in {chunk_index} chunk(s).")
     print("Deploy all dnr_wells_chunk_*.csv.gz files. The app will load and merge them.")
+    print("Vercel: mv dnr_wells_chunk_*.csv.gz public/  (static CDN serves public/ at /).")
 
 
 if __name__ == "__main__":

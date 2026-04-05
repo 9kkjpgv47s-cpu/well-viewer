@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-04-refLon2-banner-fix" />
+    <meta name="cj-build" content="2026-04-05-chunks-in-public" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -504,7 +504,21 @@
 
         // Set to your chunk base URL to avoid deploying chunks to Vercel (e.g. S3, R2, or any CDN).
         // Leave empty to load chunks from the same origin as the app.
+        /* Chunks live in public/ in git; Vercel serves public/* at /*. Local python http.server from repo root needs public/ prefix. */
         var DNR_CHUNK_BASE_URL = '';
+        (function cjSetChunkBaseUrl() {
+            if (typeof window === 'undefined') return;
+            if (window.CJ_CHUNK_BASE_URL != null && String(window.CJ_CHUNK_BASE_URL).trim() !== '') {
+                var b = String(window.CJ_CHUNK_BASE_URL).trim();
+                DNR_CHUNK_BASE_URL = b.slice(-1) === '/' ? b : b + '/';
+                return;
+            }
+            if (typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+                var pn = location.pathname || '';
+                /* Hub dev: iframe is /well-viewer/index.html — chunks sit beside index, not under public/. */
+                DNR_CHUNK_BASE_URL = (pn.indexOf('/well-viewer') !== -1) ? '' : 'public/';
+            }
+        })();
         /* Default chunk names from build_statewide_data.py / rebuild_viewer_data.py (DNR_CHUNK_FILE_PREFIX). */
         var DNR_CHUNK_PREFIX = 'dnr_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
@@ -514,7 +528,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-04-refLon2-banner-fix';
+        var APP_BUILD_STAMP = '2026-04-05-chunks-in-public';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
