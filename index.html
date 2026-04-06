@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-11-cj-probe-fixture" />
+    <meta name="cj-build" content="2026-04-06-load-bg-map-gated" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- ?cj_probe=1 → fixtures/chunks/ only; &cj_dump=1 → JSON panel (scripts/viewer_probe.py). Before body reads CJ_CHUNK_BASE_URL. -->
+    <!-- ?cj_probe=1 → fixtures/chunks/; ?cj_litho_g=1 → g debug panel (map markers still gated). Full DNR auto-loads in background unless CJ_DEFER_DNR_CHUNK_LOAD = true. Map dots: “Show wells on map” OR location/address/coords (searchCenter). -->
     <script>
     (function () {
         try {
@@ -26,6 +26,9 @@
             if (q.get('cj_probe') === '1') {
                 window.CJ_CHUNK_BASE_URL = new URL('fixtures/chunks/', window.location.href).href;
                 window.CJ_DNR_CHUNK_COUNT = 1;
+            }
+            if (q.get('cj_litho_g') === '1') {
+                window.CJ_LITHO_G_URL = true;
             }
         } catch (e) {}
     })();
@@ -306,8 +309,8 @@
         </ol>
         <span class="link-tip">Still no “Open in Safari”? Ask the sender to upload this file to iCloud Drive, Google Drive, or Dropbox and send you the <strong>link</strong> — open the link in Safari to get the map.</span>
     </div>
-    <div id="loadingDnrPanel" class="p-4 mb-4 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-800 text-center">
-        <strong>Loading full DNR dataset…</strong> <span id="loadingDnrStatus">Fetching CSV…</span>
+    <div id="loadingDnrPanel" class="p-4 mb-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-center">
+        <strong>Loading well data…</strong> <span id="loadingDnrStatus">DNR chunks load in the background. Map markers stay off until you use “Show wells on map” or 📍 / address / coordinates.</span>
     </div>
     <div id="loadFailedPanel" hidden aria-hidden="true">
         <h3>Map didn’t load</h3>
@@ -409,6 +412,10 @@
                 <div id="map"></div>
                 <div class="map-bottom-bar" role="group" aria-label="Map display options">
                     <div class="toggle-wrap">
+                        <label class="toggle-switch"><input type="checkbox" id="showMapWells" onchange="onShowMapWellsChange()"><span class="toggle-slider" style="background:#34d399;"></span></label>
+                        <div><div class="toggle-label" style="color:#047857;font-weight:700;">Show wells on map</div></div>
+                    </div>
+                    <div class="toggle-wrap">
                         <label class="toggle-switch"><input type="checkbox" id="hideWells" onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
                         <div><div class="toggle-label" style="color:#dc2626;font-weight:700;">Hide well labels</div></div>
                     </div>
@@ -494,6 +501,82 @@
         let lastWellElevationsM = null;
         var searchCenter = null;
         var RADIUS_MI = 2;
+        /** Set true first time we start fetching DNR chunks (toggle, locate, ?lat=&lon=, or default auto-load). */
+        var _dnrFullLoadStarted = false;
+        function ensureFullDnrDatasetLoaded() {
+            if (_dnrFullLoadStarted) return;
+            _dnrFullLoadStarted = true;
+            loadFullDnrDataset();
+        }
+        function showLoadingPanelActive() {
+            var panel = document.getElementById('loadingDnrPanel');
+            var status = document.getElementById('loadingDnrStatus');
+            var strong = panel ? panel.querySelector('strong') : null;
+            if (strong) strong.textContent = 'Loading well data in the background…';
+            if (status) status.textContent = 'Fetching DNR chunks (map stays light — turn on “Show wells on map” or use 📍 / address / coordinates to plot wells).';
+            if (panel) {
+                panel.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-800');
+                panel.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-700');
+                panel.style.display = '';
+            }
+        }
+        function setLoadingPanelDeferred() {
+            var panel = document.getElementById('loadingDnrPanel');
+            var status = document.getElementById('loadingDnrStatus');
+            var strong = panel ? panel.querySelector('strong') : null;
+            if (strong) strong.textContent = 'DNR load is deferred';
+            if (status) status.textContent = 'Set window.CJ_DEFER_DNR_CHUNK_LOAD = false (or remove it) to load on open. When deferred, turn on “Show wells on map” or use 📍 / address / coordinates to start loading.';
+            if (panel) {
+                panel.classList.remove('bg-emerald-100', 'border-emerald-300', 'text-emerald-800');
+                panel.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-700');
+                panel.style.display = '';
+            }
+        }
+        function maybeAutoStartDnrChunksOnInit() {
+            try {
+                var u = new URL(window.location.href);
+                if (u.searchParams.get('cj_litho_g') === '1' || window.CJ_LITHO_G_URL === true) {
+                    /* Load data + debug panel only — do not auto-check “Show wells on map” (keeps map light). */
+                    ensureFullDnrDatasetLoaded();
+                    return;
+                }
+                var lat = parseFloat(u.searchParams.get('lat') || '');
+                var lon = parseFloat(u.searchParams.get('lon') || '');
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    ensureFullDnrDatasetLoaded();
+                    return;
+                }
+            } catch (e) {}
+            /* Default: auto-fetch full DNR chunks on load (banner shows progress + chunk URL). Opt out: window.CJ_DEFER_DNR_CHUNK_LOAD = true */
+            if (typeof window !== 'undefined' && window.CJ_DEFER_DNR_CHUNK_LOAD === true) {
+                setLoadingPanelDeferred();
+                return;
+            }
+            ensureFullDnrDatasetLoaded();
+        }
+        /** Wells on map + list: location/search pin, or explicit “Show wells on map” (unless Hide well labels). */
+        function userRequestedWellMarkers() {
+            var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
+            if (hideWells) return false;
+            if (searchCenter) return true;
+            var smw = document.getElementById('showMapWells');
+            return !!(smw && smw.checked);
+        }
+        function onShowMapWellsChange() {
+            var sm = document.getElementById('showMapWells');
+            var on = sm && sm.checked;
+            if (on) {
+                ensureFullDnrDatasetLoaded();
+            }
+            refreshMap();
+            if (on) {
+                setTimeout(function() {
+                    if (typeof cjFitMapToWellsIfNoneVisible === 'function') cjFitMapToWellsIfNoneVisible();
+                    updateWellsList();
+                    if (typeof refreshMap === 'function') refreshMap();
+                }, 50);
+            }
+        }
         /** Makes combo-marker + depth/g-r tag text bigger/smaller (map +/− is separate Leaflet control). */
         var markerLabelScale = 1;
         function adjustMarkerLabelScale(delta) {
@@ -502,11 +585,15 @@
         }
 
         const REAL_DNR_WELLS = [{"id":"DNR-184649","refno":184649,"lat":39.60094155101263,"lon":-86.52648346721426,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HOLGWORTH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184649&_from=SUMMARY&_action=Details"},{"id":"DNR-184610","refno":184610,"lat":39.60094581707721,"lon":-86.51441644789972,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DUNCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184610&_from=SUMMARY&_action=Details"},{"id":"DNR-184659","refno":184659,"lat":39.60096123188862,"lon":-86.52689100179518,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"THORP","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184659&_from=SUMMARY&_action=Details"},{"id":"DNR-184654","refno":184654,"lat":39.60099299815623,"lon":-86.5280555543276,"county":"Hendricks","depth":101,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DON HEALD","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184654&_from=SUMMARY&_action=Details"},{"id":"DNR-403612","refno":403612,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":80,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE & SUSAN BURCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=403612&_from=SUMMARY&_action=Details"},{"id":"DNR-404334","refno":404334,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":729,"aquifer":"Bedrock","loc_type":"Field Located","owner":"MIKE EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=404334&_from=SUMMARY&_action=Details"},{"id":"DNR-404375","refno":404375,"lat":39.60111230641863,"lon":-86.53983057541195,"county":"Hendricks","depth":35,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=404375&_from=SUMMARY&_action=Details"},{"id":"DNR-184644","refno":184644,"lat":39.60130793550184,"lon":-86.5235340957765,"county":"Hendricks","depth":140,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"JAMES MICKLEY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184644&_from=SUMMARY&_action=Details"},{"id":"DNR-184639","refno":184639,"lat":39.601316420526295,"lon":-86.52782040590375,"county":"Hendricks","depth":155,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE SKILLMAN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184639&_from=SUMMARY&_action=Details"},{"id":"DNR-185341","refno":185341,"lat":39.60180608488984,"lon":-86.62230431018246,"county":"Hendricks","depth":65,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BOB STEVENSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185341&_from=SUMMARY&_action=Details"},{"id":"DNR-184660","refno":184660,"lat":39.60191063165977,"lon":-86.47520332811588,"county":"Hendricks","depth":105,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ROBERT LYNCH-OWNER 1991","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184660&_from=SUMMARY&_action=Details"},{"id":"DNR-15208","refno":15208,"lat":39.602074090850714,"lon":-86.58465688510935,"county":"Hendricks","depth":55,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MARVIN C MARTIN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=15208&_from=SUMMARY&_action=Details"},{"id":"DNR-185346","refno":185346,"lat":39.60224755451867,"lon":-86.62229026543324,"county":"Hendricks","depth":65,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MIKE STEVENSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185346&_from=SUMMARY&_action=Details"},{"id":"DNR-86632","refno":86632,"lat":39.60233774659317,"lon":-86.5026540003872,"county":"Hendricks","depth":85,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"TOM KENWORTHY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=86632&_from=SUMMARY&_action=Details"},{"id":"DNR-20806","refno":20806,"lat":39.602627039032406,"lon":-86.55257559484804,"county":"Hendricks","depth":121,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"JACK COOK","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=20806&_from=SUMMARY&_action=Details"},{"id":"DNR-227832","refno":227832,"lat":39.602744714939455,"lon":-86.615659632608,"county":"Hendricks","depth":130,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"MELVIN KINNEY","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=227832&_from=SUMMARY&_action=Details"},{"id":"DNR-343748","refno":343748,"lat":39.60323356564433,"lon":-86.5371964270036,"county":"Hendricks","depth":141,"aquifer":"Estimated","loc_type":"Estimated Location/Geocoding addresses","owner":"BEN EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=343748&_from=SUMMARY&_action=Details"},{"id":"DNR-392872","refno":392872,"lat":39.60444551979309,"lon":-86.53608178717528,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392872&_from=SUMMARY&_action=Details"},{"id":"DNR-392873","refno":392873,"lat":39.60444551979309,"lon":-86.53608178717528,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392873&_from=SUMMARY&_action=Details"},{"id":"DNR-340424","refno":340424,"lat":39.604461763202856,"lon":-86.5267049346315,"county":"Hendricks","depth":100,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=340424&_from=SUMMARY&_action=Details"},{"id":"DNR-184619","refno":184619,"lat":39.6054984217847,"lon":-86.53480438192915,"county":"Hendricks","depth":112,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"JOHN EDMONDSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184619&_from=SUMMARY&_action=Details"},{"id":"DNR-426558","refno":426558,"lat":39.60683966132352,"lon":-86.59717405930824,"county":"Hendricks","depth":200,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"Kristy Clements","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=426558&_from=SUMMARY&_action=Details"},{"id":"DNR-426489","refno":426489,"lat":39.60685776338087,"lon":-86.59719725151481,"county":"Hendricks","depth":44,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"Kristy Clements","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=426489&_from=SUMMARY&_action=Details"},{"id":"DNR-15206","refno":15206,"lat":39.606990105950715,"lon":-86.57367775115041,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DON SCHOLL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=15206&_from=SUMMARY&_action=Details"},{"id":"DNR-185361","refno":185361,"lat":39.60756632132866,"lon":-86.5760156277134,"county":"Hendricks","depth":42,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"COTRON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185361&_from=SUMMARY&_action=Details"},{"id":"DNR-267005","refno":267005,"lat":39.60768588013941,"lon":-86.61945308696615,"county":"Hendricks","depth":120,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"CLYDE CALVERT","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=267005&_from=SUMMARY&_action=Details"},{"id":"DNR-184713","refno":184713,"lat":39.60813007472168,"lon":-86.53142099803148,"county":"Hendricks","depth":95,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"BROOKS & SONS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184713&_from=SUMMARY&_action=Details"},{"id":"DNR-185411","refno":185411,"lat":39.608275898291275,"lon":-86.64822299774782,"county":"Hendricks","depth":74,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ALBERT WALLACE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185411&_from=SUMMARY&_action=Details"},{"id":"DNR-184694","refno":184694,"lat":39.608645958478135,"lon":-86.52219080219999,"county":"Hendricks","depth":160,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"DAVID KYAMP","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184694&_from=SUMMARY&_action=Details"},{"id":"DNR-185366","refno":185366,"lat":39.60880832888855,"lon":-86.58560683860144,"county":"Hendricks","depth":100,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HERMAN WILLIAMS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185366&_from=SUMMARY&_action=Details"},{"id":"DNR-184630","refno":184630,"lat":39.60992588104326,"lon":-86.4803150419923,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"UNION OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184630&_from=SUMMARY&_action=Details"},{"id":"DNR-49504","refno":49504,"lat":39.60997434327697,"lon":-86.51968962006093,"county":"Hendricks","depth":138,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"INA ARMOUR","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=49504&_from=SUMMARY&_action=Details"},{"id":"DNR-14474","refno":14474,"lat":39.609989629494514,"lon":-86.48046600404719,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"INDY WEST TRUCK PLAZA-UNOCAL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=14474&_from=SUMMARY&_action=Details"},{"id":"DNR-308016","refno":308016,"lat":39.61050081205466,"lon":-86.52722297497091,"county":"Hendricks","depth":220,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"EMERSON FRITCH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=308016&_from=SUMMARY&_action=Details"},{"id":"DNR-184645","refno":184645,"lat":39.61085119552463,"lon":-86.478550272536,"county":"Hendricks","depth":208,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"BLUE & WHITE SERVICE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184645&_from=SUMMARY&_action=Details"},{"id":"DNR-184699","refno":184699,"lat":39.61125816508533,"lon":-86.52638994044946,"county":"Hendricks","depth":100,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"COLE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184699&_from=SUMMARY&_action=Details"},{"id":"DNR-358528","refno":358528,"lat":39.61159871684239,"lon":-86.52688932603527,"county":"Hendricks","depth":160,"aquifer":"Estimated","loc_type":"Estimated Location/Geocoding addresses","owner":"DEBBIE GROSS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=358528&_from=SUMMARY&_action=Details"},{"id":"DNR-184620","refno":184620,"lat":39.61176653605822,"lon":-86.47973163768378,"county":"Hendricks","depth":160,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"PURE OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184620&_from=SUMMARY&_action=Details"},{"id":"DNR-184625","refno":184625,"lat":39.61176653605822,"lon":-86.47973163768378,"county":"Hendricks","depth":227,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"PURE OIL CO","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184625&_from=SUMMARY&_action=Details"},{"id":"DNR-392865","refno":392865,"lat":39.611790181571834,"lon":-86.48912083032323,"county":"Hendricks","depth":109,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"LAWRENCE SALE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=392865&_from=SUMMARY&_action=Details"},{"id":"DNR-159224","refno":159224,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":78,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"KENNETH MARSH","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=159224&_from=SUMMARY&_action=Details"},{"id":"DNR-269230","refno":269230,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":118,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"GENE HORTON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=269230&_from=SUMMARY&_action=Details"},{"id":"DNR-381033","refno":381033,"lat":39.611805427298826,"lon":-86.52675977604613,"county":"Hendricks","depth":120,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"LARRY RUBLE","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=381033&_from=SUMMARY&_action=Details"},{"id":"DNR-275168","refno":275168,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":200,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=275168&_from=SUMMARY&_action=Details"},{"id":"DNR-275169","refno":275169,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":140,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=275169&_from=SUMMARY&_action=Details"},{"id":"DNR-799","refno":799,"lat":39.611808363421844,"lon":-86.50794604601973,"county":"Hendricks","depth":100,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=799&_from=SUMMARY&_action=Details"},{"id":"DNR-184714","refno":184714,"lat":39.61187722039838,"lon":-86.52134149036569,"county":"Hendricks","depth":108,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"TIM GARVER","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184714&_from=SUMMARY&_action=Details"},{"id":"DNR-185356","refno":185356,"lat":39.6126578381949,"lon":-86.60428159727171,"county":"Hendricks","depth":80,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"ELDA BARROW","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=185356&_from=SUMMARY&_action=Details"},{"id":"DNR-184684","refno":184684,"lat":39.61266585422992,"lon":-86.52248937728004,"county":"Hendricks","depth":102,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BERNARD SHIONFESSEL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184684&_from=SUMMARY&_action=Details"},{"id":"DNR-184689","refno":184689,"lat":39.612918667077444,"lon":-86.52261578766367,"county":"Hendricks","depth":92,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BAYIELD","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184689&_from=SUMMARY&_action=Details"},{"id":"DNR-307286","refno":307286,"lat":39.613360964078026,"lon":-86.5043702726246,"county":"Hendricks","depth":138,"aquifer":"Unconsolidated","loc_type":"Office Located/Geocoded","owner":"MARK WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=307286&_from=SUMMARY&_action=Details"},{"id":"DNR-184709","refno":184709,"lat":39.61362701215482,"lon":-86.50456539551406,"county":"Hendricks","depth":64,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"MAURICE WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184709&_from=SUMMARY&_action=Details"},{"id":"DNR-7375","refno":7375,"lat":39.61363652743304,"lon":-86.50560317129423,"county":"Hendricks","depth":59,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"MARK WELLS","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=7375&_from=SUMMARY&_action=Details"},{"id":"DNR-49499","refno":49499,"lat":39.61364164330156,"lon":-86.51971087538189,"county":"Hendricks","depth":96,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"CECIL HELTON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=49499&_from=SUMMARY&_action=Details"},{"id":"DNR-184604","refno":184604,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":50,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184604&_from=SUMMARY&_action=Details"},{"id":"DNR-184609","refno":184609,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184609&_from=SUMMARY&_action=Details"},{"id":"DNR-184614","refno":184614,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":80,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184614&_from=SUMMARY&_action=Details"},{"id":"DNR-184698","refno":184698,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":105,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184698&_from=SUMMARY&_action=Details"},{"id":"DNR-184703","refno":184703,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":130,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184703&_from=SUMMARY&_action=Details"},{"id":"DNR-184708","refno":184708,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":55,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184708&_from=SUMMARY&_action=Details"},{"id":"DNR-184718","refno":184718,"lat":39.61364298379367,"lon":-86.52441733082351,"county":"Hendricks","depth":55,"aquifer":"Estimated","loc_type":"Estimated Location/TRS_quarter sections_county","owner":"ROSS MITCHELL","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184718&_from=SUMMARY&_action=Details"},{"id":"DNR-184634","refno":184634,"lat":39.61409407561194,"lon":-86.5324751647042,"county":"Hendricks","depth":75,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"BUD EPPERSON","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184634&_from=SUMMARY&_action=Details"},{"id":"DNR-14473","refno":14473,"lat":39.6146903239044,"lon":-86.47384870815442,"county":"Hendricks","depth":73,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"LLOYD RUNYAN","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=14473&_from=SUMMARY&_action=Details"},{"id":"DNR-184640","refno":184640,"lat":39.614861610397284,"lon":-86.48188584480306,"county":"Hendricks","depth":82,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"HARRY HOOP III","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184640&_from=SUMMARY&_action=Details"},{"id":"DNR-184615","refno":184615,"lat":39.61491096383471,"lon":-86.49930210293297,"county":"Hendricks","depth":35,"aquifer":"Unconsolidated","loc_type":"Field Located","owner":"CLAVEN WELLS JR. II","report":"https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=184615&_from=SUMMARY&_action=Details"}];
-        /* Demo data immediately — do not wait for chunk fetch (preview often omits loading panel / chunks). */
+        /* Start with built-in Hendricks demo wells so counts/list are never 0; full statewide replaces when chunks finish. */
         wells = REAL_DNR_WELLS.slice();
         function cjSaveWellsToStorage() {
             try {
                 if (!wells || !wells.length) return;
+                /* JSON.stringify(full statewide) freezes the tab for seconds — skip without building the string. */
+                var maxSave = (typeof window !== 'undefined' && window.CJ_LOCALSTORAGE_MAX_WELLS != null)
+                    ? Number(window.CJ_LOCALSTORAGE_MAX_WELLS) : 6000;
+                if (!isNaN(maxSave) && maxSave > 0 && wells.length > maxSave) return;
                 var j = JSON.stringify(wells);
                 if (j.length > 4500000) return;
                 localStorage.setItem('cjWells', j);
@@ -547,20 +634,23 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-11-g-csv-list-sync';
+        var APP_BUILD_STAMP = '2026-04-06-load-bg-map-gated';
         /**
-         * Gravel “g” + ft — static CSV first; no live DNR API for map g.
-         * 1) WELL_G_FT_BY_REF overrides.
-         * 2) Production columns: vein_size_ft, gravel_thickness_ft, rock_start_ft (capped) from chunks.
-         * 3) Supplemental / lithology / registry drift — strict gThicknessIsPlausibleVsCompletedDepth.
-         * isUnconsolidatedWell: rock aquifers (sandstone, greensand, etc.) before “sand” substring match.
-         * Baked vein_size_ft: only impossible vs completed depth (not strict gThickness — thick real drift fails that).
-         * Map/list g from litho/supplemental/drift: off by default (set window.CJ_G_TAG_CSV_ONLY = false to re-enable).
-         * Drift off when CSV-only: implicit; or CJ_G_USE_REGISTRY_DRIFT = false when fallbacks on.
+         * Gravel “g” + ft — lithology-only policy (2026-04):
+         * Map/list g uses WELL_G_FT_BY_REF (manual) then sand/gravel/water-bearing thickness parsed only from
+         * lithology_json (and other lithology-shaped columns on the CSV row). Never vein_size_ft, rock_start_ft,
+         * depth_bedrock drift, supplemental alias columns, or screen_length (screen ≠ aquifer thickness).
+         * getProductionVeinSizeFtFromCsv remains for debug/QA probes only — not used for g display.
+         * isUnconsolidatedWell / r tags unchanged.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
-        /** When true (default): g tag uses manual ft + vein_size_ft / gravel_thickness / rock_start from chunks only. */
-        var CJ_G_TAG_CSV_ONLY = (typeof window !== 'undefined' && window.CJ_G_TAG_CSV_ONLY === false) ? false : true;
+        /**
+         * When false, gravel g from lithology uses only max(deepest vein, sum-above-rock, column-to-rock), not the
+         * sum of every sand/gravel/water-bearing interval. Default: sum-all is on when this is undefined.
+         */
+        function cjLithoUseSumAllSandGravelIntervals() {
+            return typeof window === 'undefined' || window.CJ_G_LITHO_USE_SUM_ALL_INTERVALS !== false;
+        }
         var elevationViewActive = false;
         var yieldViewActive = false;
 
@@ -618,7 +708,7 @@
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
             updateWellsList();
-            setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); loadFullDnrDataset(); }, 200);
+            setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); maybeAutoStartDnrChunksOnInit(); }, 200);
             var btnViewLog = document.getElementById('btnViewLog');
             if (btnViewLog) {
                 btnViewLog.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); viewFullDnrReport(); return false; });
@@ -740,10 +830,11 @@
             if (!map) return;
             var la = Number(lat), lo = Number(lon);
             if (isNaN(la) || isNaN(lo)) return;
+            ensureFullDnrDatasetLoaded();
             searchCenter = { lat: la, lon: lo };
             if (tempMarker) map.removeLayer(tempMarker);
-            tempMarker = L.marker([la, lo], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
             addMarkersInRadius();
+            tempMarker = L.marker([la, lo], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
             map.flyTo([la, lo], 13, CJ_FLY_OPTS);
             updateWellsList();
         }
@@ -773,6 +864,7 @@
             });
         }
         function loadFullDnrDataset() {
+            showLoadingPanelActive();
             var CHUNK_HARD_LIMIT = 48;
             /* Exactly how many dnr_wells_chunk_*.csv.gz files you deploy (0 .. count-1). Stops Safari/console
              * noise from probing chunk_N+1 (404). Override: window.CJ_DNR_CHUNK_COUNT = 12; or -1 to probe until miss. */
@@ -782,12 +874,16 @@
                 if (nc === -1) dnrChunkExpected = null;
                 else if (!isNaN(nc) && nc >= 1) dnrChunkExpected = Math.floor(nc);
             }
-            try {
-                var chunk0Url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + '0' + DNR_CHUNK_SUFFIX;
-                console.info('[C&J] DNR chunks: expect', dnrChunkExpected == null ? '∞' : dnrChunkExpected, 'file(s); first URL:', chunk0Url, '| page:', String(location.href));
-            } catch (eLog) {}
             var panel = document.getElementById('loadingDnrPanel');
             var status = document.getElementById('loadingDnrStatus');
+            var chunk0Url = '';
+            try {
+                chunk0Url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + '0' + DNR_CHUNK_SUFFIX;
+                console.info('[C&J] DNR chunks: expect', dnrChunkExpected == null ? '∞' : dnrChunkExpected, 'file(s); first URL:', chunk0Url, '| page:', String(location.href));
+            } catch (eLog) {}
+            if (status && chunk0Url) {
+                status.textContent = 'Fetching chunk 0 — ' + chunk0Url + ' (see console [C&J] if this hangs)';
+            }
             function finishLoad(msg, resetToBuiltin) {
                 if (resetToBuiltin) {
                     wells = REAL_DNR_WELLS.slice();
@@ -804,8 +900,18 @@
                     var totalEl = document.getElementById('totalWells');
                     if (totalEl) totalEl.textContent = wells.length.toLocaleString();
                     if (typeof cjSummarizeGLabels === 'function') cjSummarizeGLabels();
+                    try {
+                        var uChk = new URL(window.location.href || '');
+                        if (uChk.searchParams.get('cj_g_v2_check') === '1' && typeof cjGv2SelfCheck === 'function') cjGv2SelfCheck();
+                    } catch (eChk) {}
                     updateWellsList();
                     if (typeof refreshMap === 'function') refreshMap();
+                    setTimeout(function() {
+                        if (typeof cjFitMapToWellsIfNoneVisible === 'function') cjFitMapToWellsIfNoneVisible();
+                        updateWellsList();
+                        if (typeof refreshMap === 'function') refreshMap();
+                        if (typeof cjUpdateLithoGDebugPanel === 'function') cjUpdateLithoGDebugPanel();
+                    }, 60);
                     applyViewerQueryParamsOnce();
                     try {
                         var uDump = new URL(window.location.href);
@@ -820,6 +926,12 @@
                             document.body.insertBefore(pre, document.body.firstChild);
                         }
                     } catch (eDump) {}
+                    try {
+                        var uFixture = new URL(window.location.href || '');
+                        if (uFixture.searchParams.get('cj_probe') === '1' && typeof cjVerifyGLabelExpectations === 'function') {
+                            cjVerifyGLabelExpectations();
+                        }
+                    } catch (eFixture) {}
                 }, 50);
             }
             if (typeof Papa === 'undefined') {
@@ -831,8 +943,56 @@
             wells = REAL_DNR_WELLS.slice();
             _lithoCache = {};
             var loadedFromChunks = false;
+            var timeoutMsSeq = 90000;
+            var chunkUiDebounce = null;
+            function cjWarnChunkHeadersIfNeeded(parsed) {
+                var rawRows = parsed.data || [];
+                if (rawRows.length <= 0) return;
+                var fnames = (parsed.meta && parsed.meta.fields) || [];
+                var flo = fnames.map(function(f) { return String(f || '').toLowerCase().trim(); });
+                var hasLithCol = flo.some(function(f) { return f === 'lithology_json' || f === 'lithology' || (f.indexOf('lithology') >= 0 && f.indexOf('json') >= 0); });
+                var hasVeinCol = flo.some(function(f) {
+                    return /vein|gravel_thickness|rock_start|g_vein|gravel_vein|gravel_interval|(^|_)g_ft$/.test(f);
+                });
+                if (!hasLithCol && !hasVeinCol) {
+                    try {
+                        console.warn('[C&J] Chunks have no lithology_json or vein_* columns — gravel “g” tags cannot be computed. Rebuild with python3 rebuild_viewer_data.py (see chunk_dnr_csv.py header), then redeploy chunks.');
+                    } catch (e) {}
+                }
+            }
+            function fetchAndParseOneChunk(index) {
+                var url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + index + DNR_CHUNK_SUFFIX;
+                var fetchPromise = fetch(url).then(function(res) {
+                    if (!res.ok) throw new Error('chunk ' + index + ' http ' + res.status);
+                    return cjFetchChunkBodyAsText(res);
+                });
+                var timeoutPromise = new Promise(function(_, reject) {
+                    setTimeout(function() { reject(new Error('timeout')); }, timeoutMsSeq);
+                });
+                return Promise.race([fetchPromise, timeoutPromise]).then(function(text) {
+                    var parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+                    var rawRows = parsed.data || [];
+                    var rows = rawRows.map(function(row) {
+                        try { return normalizeCsvRow(row); } catch (e) { return null; }
+                    }).filter(Boolean);
+                    return { index: index, rows: rows, rawCount: rawRows.length, parsed: parsed };
+                });
+            }
+            function scheduleSequentialChunkUi(label) {
+                if (status) status.textContent = label;
+                var totalEl = document.getElementById('totalWells');
+                if (totalEl) totalEl.textContent = wells.length.toLocaleString();
+                if (panel) panel.style.display = 'none';
+                if (chunkUiDebounce) clearTimeout(chunkUiDebounce);
+                chunkUiDebounce = setTimeout(function() {
+                    chunkUiDebounce = null;
+                    updateWellsList();
+                    if (typeof refreshMap === 'function') refreshMap();
+                }, 380);
+            }
             function fetchChunk(index) {
                 if (index > CHUNK_HARD_LIMIT) {
+                    if (chunkUiDebounce) { clearTimeout(chunkUiDebounce); chunkUiDebounce = null; }
                     if (!loadedFromChunks) {
                         finishLoad('No chunk data in range — showing ' + wells.length + ' built-in demo wells.', false);
                     } else {
@@ -841,6 +1001,7 @@
                     return;
                 }
                 if (dnrChunkExpected != null && index >= dnrChunkExpected) {
+                    if (chunkUiDebounce) { clearTimeout(chunkUiDebounce); chunkUiDebounce = null; }
                     if (!loadedFromChunks) {
                         finishLoad('No chunk data in range — showing ' + wells.length + ' built-in demo wells.', false);
                     } else {
@@ -850,14 +1011,13 @@
                 }
                 var url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + index + DNR_CHUNK_SUFFIX;
                 if (status) status.textContent = 'Loading chunk ' + (index + 1) + '…';
-                var timeoutMs = 90000;
                 var fetchPromise = fetch(url)
                     .then(function(res) {
                         if (!res.ok) throw new Error('no more chunks');
                         return cjFetchChunkBodyAsText(res);
                     });
                 var timeoutPromise = new Promise(function(_, reject) {
-                    setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
+                    setTimeout(function() { reject(new Error('timeout')); }, timeoutMsSeq);
                 });
                 Promise.race([fetchPromise, timeoutPromise])
                     .then(function(text) {
@@ -865,25 +1025,14 @@
                         var parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
                         var rawRows = parsed.data || [];
                         var rawCount = rawRows.length;
-                        if (index === 0 && rawCount > 0) {
-                            var fnames = (parsed.meta && parsed.meta.fields) || [];
-                            var flo = fnames.map(function(f) { return String(f || '').toLowerCase().trim(); });
-                            var hasLithCol = flo.some(function(f) { return f === 'lithology_json' || f === 'lithology' || (f.indexOf('lithology') >= 0 && f.indexOf('json') >= 0); });
-                            var hasVeinCol = flo.some(function(f) {
-                                return /vein|gravel_thickness|rock_start|g_vein|gravel_vein|gravel_interval|(^|_)g_ft$/.test(f);
-                            });
-                            if (!hasLithCol && !hasVeinCol) {
-                                try {
-                                    console.warn('[C&J] Chunks have no lithology_json or vein_* columns — gravel “g” tags cannot be computed. Rebuild with python3 rebuild_viewer_data.py (see chunk_dnr_csv.py header), then redeploy chunks.');
-                                } catch (e) {}
-                            }
-                        }
+                        if (index === 0 && rawCount > 0) cjWarnChunkHeadersIfNeeded(parsed);
                         var rows = rawRows.map(function(row) {
                             try { return normalizeCsvRow(row); } catch (e) { return null; }
                         }).filter(Boolean);
                         if (rows.length === 0) {
                             if (index === 0 && rawCount > 8) {
                                 try { console.warn('[C&J] chunk 0: ' + rawCount + ' rows, 0 with lat/lon — keeping demo wells'); } catch (e) {}
+                                if (chunkUiDebounce) { clearTimeout(chunkUiDebounce); chunkUiDebounce = null; }
                                 finishLoad('Chunk did not yield coordinates (decode/format). Showing ' + wells.length + ' built-in demo wells.', false);
                                 return;
                             }
@@ -896,15 +1045,11 @@
                         } else {
                             wells = wells.concat(rows);
                         }
-                        if (status) status.textContent = 'Loaded ' + wells.length.toLocaleString() + ' wells (chunk ' + (index + 1) + ')…';
-                        var totalEl = document.getElementById('totalWells');
-                        if (totalEl) totalEl.textContent = wells.length.toLocaleString();
-                        if (panel) panel.style.display = 'none';
-                        updateWellsList();
-                        if (typeof refreshMap === 'function') refreshMap();
+                        scheduleSequentialChunkUi('Loaded ' + wells.length.toLocaleString() + ' wells (chunk ' + (index + 1) + ')…');
                         return fetchChunk(index + 1);
                     })
                     .catch(function(err) {
+                        if (chunkUiDebounce) { clearTimeout(chunkUiDebounce); chunkUiDebounce = null; }
                         if (!loadedFromChunks) {
                             if (status) status.textContent = 'Chunks not available; showing ' + wells.length + ' built-in demo wells.';
                             try { console.info('[C&J] chunk load:', err && err.message ? err.message : err); } catch (e) {}
@@ -914,7 +1059,48 @@
                         }
                     });
             }
-            fetchChunk(0);
+
+            var useParallel = dnrChunkExpected != null && dnrChunkExpected >= 1 &&
+                (typeof window === 'undefined' || window.CJ_DNR_CHUNK_PARALLEL !== false);
+            if (useParallel) {
+                if (status) status.textContent = 'Loading ' + dnrChunkExpected + ' DNR chunks in parallel…';
+                var parr = [];
+                for (var pi = 0; pi < dnrChunkExpected; pi++) parr.push(fetchAndParseOneChunk(pi));
+                Promise.all(parr).then(function(parts) {
+                    var merged = [];
+                    var pi2;
+                    for (pi2 = 0; pi2 < parts.length; pi2++) {
+                        var rws = parts[pi2].rows;
+                        if (rws && rws.length) merged = merged.concat(rws);
+                    }
+                    if (!merged.length) {
+                        try { console.warn('[C&J] parallel chunks yielded 0 rows — falling back to sequential'); } catch (e) {}
+                        wells = REAL_DNR_WELLS.slice();
+                        _lithoCache = {};
+                        loadedFromChunks = false;
+                        fetchChunk(0);
+                        return;
+                    }
+                    for (pi2 = 0; pi2 < parts.length; pi2++) {
+                        if (parts[pi2].rawCount > 0 && parts[pi2].parsed) {
+                            cjWarnChunkHeadersIfNeeded(parts[pi2].parsed);
+                            break;
+                        }
+                    }
+                    wells = merged;
+                    _lithoCache = {};
+                    loadedFromChunks = true;
+                    finishLoad('Loaded ' + wells.length.toLocaleString() + ' wells.', false);
+                }).catch(function(errP) {
+                    try { console.warn('[C&J] parallel chunk load failed, sequential fallback:', errP && errP.message ? errP.message : errP); } catch (e) {}
+                    wells = REAL_DNR_WELLS.slice();
+                    _lithoCache = {};
+                    loadedFromChunks = false;
+                    fetchChunk(0);
+                });
+            } else {
+                fetchChunk(0);
+            }
         }
 
         function setupTrackpadPanZoom() {
@@ -1006,8 +1192,18 @@
             } catch (e) {}
             return null;
         }
+        function cjLithoCacheKey(w) {
+            if (!w || typeof w !== 'object') return '';
+            var idStr = w.id != null ? String(w.id).trim() : '';
+            if (idStr !== '') return idStr;
+            var refStr = w.refno != null && String(w.refno).trim() !== '' ? String(w.refno).replace(/\.0+$/, '').trim() : '';
+            if (refStr !== '') return 'ref:' + refStr;
+            var la = Number(w.lat), lo = Number(w.lon);
+            if (!isNaN(la) && !isNaN(lo)) return 'll:' + la.toFixed(6) + ',' + lo.toFixed(6);
+            return 'anon';
+        }
         function getLithLayers(w) {
-            var key = w.id || '';
+            var key = cjLithoCacheKey(w);
             if (_lithoCache[key] !== undefined) return _lithoCache[key];
             var layers = null;
             /* CSV row fields only (chunk pipeline); never API. */
@@ -1096,6 +1292,104 @@
             if (!isNaN(cl) && cl > 0) return Math.round(cl);
             return null;
         }
+
+        /* =============================================================================
+         * G-LABEL — cjGv2* helpers below are for parsing/sanity tests and debug probes only.
+         * Display g uses getGravelVeinDisplayFt (lithology intervals + manual overrides only).
+         * ============================================================================= */
+        window.CJ_G_LABEL_V2 = true;
+
+        /** Strip BOM, lowercase, remove non-alphanumeric — matches how chunk headers land on row keys. */
+        function cjGv2NormKey(k) {
+            return String(k == null ? '' : k).replace(/^\ufeff/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+        /** Parse one CSV cell as feet; return null unless value is a finite number > 0. */
+        function cjGv2ParsePositiveFt(val) {
+            if (val == null || val === '') return null;
+            var n = parseFloat(String(val).replace(/,/g, '').replace(/[^\d.\-]/g, ''));
+            if (isNaN(n) || n <= 0) return null;
+            return n;
+        }
+        /**
+         * Completed depth for V2 sanity checks: registry depth column only.
+         * Mechanism: keep V2 aligned with baked chunk `depth`; do not infer from litho here.
+         */
+        function cjGv2CompletedDepthFt(w) {
+            if (!w || typeof w !== 'object') return null;
+            var d = w.depth != null && w.depth !== '' ? parseInt(String(w.depth).replace(/,/g, ''), 10) : NaN;
+            if (!isNaN(d) && d > 0) return d;
+            return null;
+        }
+        /**
+         * Reject impossible thickness: must be strictly inside completed depth (with small float slack).
+         * Mechanism: prevents total-depth and typo values from showing as g.
+         */
+        function cjGv2VeinSaneVsCompletedDepth(veinFt, w) {
+            if (veinFt == null || veinFt <= 0) return false;
+            var dep = cjGv2CompletedDepthFt(w);
+            if (dep == null) return true;
+            if (veinFt > dep + 0.5) return false;
+            if (veinFt >= dep) return false;
+            return true;
+        }
+        /**
+         * Production vein from bake output only (priority order in code).
+         * Mechanism: read vein_size_ft, then scan keys veinsizeft/veinsize; then gravel_thickness_ft + keys.
+         */
+        function cjGv2ReadProductionVeinFromCsv(w) {
+            if (!w || typeof w !== 'object') return null;
+            var nVs = cjGv2ParsePositiveFt(w.vein_size_ft);
+            if (nVs != null) return Math.round(nVs);
+            var pnames = Object.keys(w);
+            var pi, nn, nv;
+            for (pi = 0; pi < pnames.length; pi++) {
+                nn = cjGv2NormKey(pnames[pi]);
+                if (nn !== 'veinsizeft' && nn !== 'veinsize') continue;
+                nv = cjGv2ParsePositiveFt(w[pnames[pi]]);
+                if (nv != null) return Math.round(nv);
+            }
+            var nGt = cjGv2ParsePositiveFt(w.gravel_thickness_ft);
+            if (nGt != null) return Math.round(nGt);
+            for (pi = 0; pi < pnames.length; pi++) {
+                nn = cjGv2NormKey(pnames[pi]);
+                if (nn !== 'gravelthicknessft' && nn !== 'gravelthickness') continue;
+                nv = cjGv2ParsePositiveFt(w[pnames[pi]]);
+                if (nv != null) return Math.round(nv);
+            }
+            return null;
+        }
+        /** Same as getGravelVeinDisplayFt (lithology-only g); kept for DevTools / cjGv2SelfCheck naming. */
+        function cjGv2GravelDisplayFt(w) {
+            return getGravelVeinDisplayFt(w);
+        }
+        /**
+         * DevTools self-check — run after wells load. See docs outline “Self-check” section.
+         * Mechanism: asserts parser + sanity + synthetic row; logs [C&J] cjGv2SelfCheck PASS|FAIL.
+         */
+        function cjGv2SelfCheck() {
+            var r = { ok: true, errors: [], manualRefMapOk: typeof WELL_G_FT_BY_REF === 'object' };
+            function fail(msg) { r.ok = false; r.errors.push(msg); }
+            try {
+                if (cjGv2ParsePositiveFt('12.5') !== 12.5) fail('parse 12.5');
+                if (cjGv2ParsePositiveFt('') != null) fail('parse empty');
+                if (cjGv2VeinSaneVsCompletedDepth(30, { depth: 100 }) !== true) fail('sane 30 vs 100');
+                if (cjGv2VeinSaneVsCompletedDepth(100, { depth: 100 }) !== false) fail('reject g>=depth');
+                if (cjGv2VeinSaneVsCompletedDepth(200, { depth: 100 }) !== false) fail('reject g>depth+slack');
+                var syn = { depth: 100, vein_size_ft: '42' };
+                if (cjGv2ReadProductionVeinFromCsv(syn) !== 42) fail('syn vein_size_ft');
+                var synL = {
+                    id: 'cj-selfcheck-litho',
+                    depth: '100',
+                    lithology_json: JSON.stringify([{ top: 0, bottom: 18, formation: 'sand and gravel' }]),
+                };
+                if (getGravelVeinDisplayFt(synL) !== 18) fail('g lithology-only expected 18');
+                var synVeinNearTd = { depth: 120, vein_size_ft: '118', aquifer: 'Unconsolidated', county: 'Test' };
+                if (getGravelVeinDisplayFt(synVeinNearTd) !== 118) fail('g vein near-TD 118/120');
+            } catch (e) { fail(String(e && e.message ? e.message : e)); }
+            try { console.info('[C&J] cjGv2SelfCheck', r.ok ? 'PASS' : 'FAIL', r); } catch (e2) {}
+            return r;
+        }
+        if (typeof window !== 'undefined') window.cjGv2SelfCheck = cjGv2SelfCheck;
 
         var _rockFormations = /lime|dolomite|shale|slate|sandstone|siltstone|bedrock|granite|marble|rock/i;
         var _gravelFormations = /gravel|sand\s*(&|and)\s*gravel|gravel\s*(&|and)\s*sand/i;
@@ -1276,6 +1570,108 @@
         }
 
         /**
+         * Total thickness (ft) of every lithology interval whose formation text matches water-bearing and/or
+         * sand–gravel–drift patterns (same rules as isWaterBearingFormation and lithoLooksLikeSandGravelMaterial).
+         * Skips placeholder / dry / plugged strings and pure bedrock–matrix rows (no thickness added).
+         * Clips interval bottoms to completed depth when known. Overlapping or out-of-order rows in source data
+         * can still double-count; the plausibility gate on callers mitigates impossible totals.
+         */
+        function sumAllSandGravelWaterBearingIntervalsFt(w) {
+            var layers = getLithLayers(w);
+            if (!layers || !layers.length) return null;
+            var depthCap = getWellDisplayDepthFt(w);
+            var maxD = depthCap != null && !isNaN(depthCap) && depthCap > 0 ? depthCap : Infinity;
+            var prevBot = NaN;
+            var sum = 0;
+            for (var i = 0; i < layers.length; i++) {
+                var L = layers[i];
+                var fm = lithoFormationName(L);
+                var l = fm.toLowerCase();
+                if (!l.trim() || /no digitized|dnr report|placeholder/i.test(l)) continue;
+                if (/dry\s*hole|no\s*water|abandon|plugged|cement\s*fill/i.test(l)) continue;
+                var tb = lithoLayerTopBottomFt(L, prevBot);
+                if (!isNaN(tb.bot)) prevBot = tb.bot;
+                if (isNaN(tb.bot)) continue;
+                var top = tb.top;
+                if (isNaN(top)) continue;
+                top = Math.max(0, top);
+                var bot = Math.min(tb.bot, maxD);
+                if (bot <= top) continue;
+                if (_testRockOnlyInterval(l)) continue;
+                if (!isWaterBearingFormation(fm) && !lithoLooksLikeSandGravelMaterial(fm)) continue;
+                sum += bot - top;
+            }
+            if (sum <= 0) return null;
+            return Math.round(sum);
+        }
+
+        /** DevTools: intervals that count toward sumAllSandGravelWaterBearingIntervalsFt (formation, top, bottom, thickFt). */
+        function cjListSandGravelAquiferLayers(w) {
+            var layers = getLithLayers(w);
+            if (!layers || !layers.length) return [];
+            var depthCap = getWellDisplayDepthFt(w);
+            var maxD = depthCap != null && !isNaN(depthCap) && depthCap > 0 ? depthCap : Infinity;
+            var prevBot = NaN;
+            var out = [];
+            for (var i = 0; i < layers.length; i++) {
+                var L = layers[i];
+                var fm = lithoFormationName(L);
+                var l = fm.toLowerCase();
+                if (!l.trim() || /no digitized|dnr report|placeholder/i.test(l)) continue;
+                if (/dry\s*hole|no\s*water|abandon|plugged|cement\s*fill/i.test(l)) continue;
+                var tb = lithoLayerTopBottomFt(L, prevBot);
+                if (!isNaN(tb.bot)) prevBot = tb.bot;
+                if (isNaN(tb.bot) || isNaN(tb.top)) continue;
+                var top = Math.max(0, tb.top);
+                var bot = Math.min(tb.bot, maxD);
+                if (bot <= top) continue;
+                if (_testRockOnlyInterval(l)) continue;
+                if (!isWaterBearingFormation(fm) && !lithoLooksLikeSandGravelMaterial(fm)) continue;
+                out.push({ formation: fm, top: top, bottom: bot, thickFt: Math.round(bot - top) });
+            }
+            return out;
+        }
+
+        var _cjCsvSkipKeyForKeywordScan = /^(lat|lon|id|utm_|png|jpg|jpeg|gif|webp|pdf|sha|hash|etag)$/i;
+        var _cjSandGravelKeywordHint = /grav|gravel|sand\s*(and|&|\/)\s*grav|sand\s*grav|pea\s*grav|\bsg\b|\bsa\b\s*[&,/]\s*\bgr\b|water\s*bear|unconsolidated|glacial\s*drift|outwash|aquifer|drift(?!\s*less)|\b(sa|gr)\b(?!\w)/i;
+
+        /**
+         * Walk every string (and short JSON) field on the well row for sand/gravel/S&G/water-bearing wording.
+         * For discovery only — thickness still comes from structured lithology intervals when present.
+         */
+        function cjScanRowStringsForSandGravelKeywords(w) {
+            if (!w || typeof w !== 'object') return [];
+            var hits = [];
+            var keys = Object.keys(w);
+            for (var ki = 0; ki < keys.length; ki++) {
+                var k = keys[ki];
+                var kl = String(k).toLowerCase();
+                if (_cjCsvSkipKeyForKeywordScan.test(k) && kl.indexOf('lithology') < 0 && kl.indexOf('formation') < 0) continue;
+                var v = w[k];
+                if (v == null) continue;
+                var s = '';
+                if (typeof v === 'string') s = v;
+                else if (typeof v === 'number') continue;
+                else if (typeof v === 'object') {
+                    try {
+                        s = JSON.stringify(v);
+                    } catch (e) { continue; }
+                    if (s.length > 800) s = s.slice(0, 800);
+                }
+                s = String(s).trim();
+                if (s.length < 4) continue;
+                if (!_cjSandGravelKeywordHint.test(s)) continue;
+                hits.push({ field: k, snippet: s.length > 140 ? s.slice(0, 137) + '…' : s });
+            }
+            return hits;
+        }
+        if (typeof window !== 'undefined') {
+            window.cjSumAllSandGravelWaterBearingIntervalsFt = sumAllSandGravelWaterBearingIntervalsFt;
+            window.cjListSandGravelAquiferLayers = cjListSandGravelAquiferLayers;
+            window.cjScanRowStringsForSandGravelKeywords = cjScanRowStringsForSandGravelKeywords;
+        }
+
+        /**
          * Reject g values that are just “completed depth” (misleading as vein / sand-gravel thickness).
          * Registry drift and casing+screen sums often collapse to total depth — those must not become map g.
          */
@@ -1291,24 +1687,79 @@
         }
 
         /**
-         * vein_size_ft / gravel_thickness_ft / rock_start cap from chunks are pipeline output — do not apply
-         * gThicknessIsPlausibleVsCompletedDepth (it rejects common thick drift, e.g. g/depth > 0.92).
-         * Only drop values that cannot be a thickness inside the completed hole.
+         * Plausibility for map g when the only signal is registry vein_size_ft / gravel_thickness (no real lithology).
+         * Stricter rules in gThicknessIsPlausibleVsCompletedDepth also blocked many correct DNR rows where saturated
+         * drift thickness is legitimately within a few feet of TD (cjGv2VeinSaneVsCompletedDepth already enforces vein < depth).
+         * Still reject g === TD and absurd ratios within the last ~1.5 ft band.
          */
-        function gBakedProductionVeinSaneVsDepth(gVal, w) {
+        function gThicknessPlausibleForCsvVeinOnlyFallback(gVal, w) {
             if (gVal == null || gVal <= 0) return false;
             var dep = getWellDisplayDepthFt(w);
             if (dep == null || isNaN(dep) || dep <= 0) return true;
             dep = Number(dep);
             if (gVal > dep + 0.5) return false;
             if (gVal >= dep) return false;
+            if (dep >= 15 && gVal >= dep - 1.5) {
+                if (gVal / dep >= 0.995) return false;
+            }
             return true;
         }
 
         /**
-         * Gravel / producing-zone thickness for g label (ft). Order: manual → production vein (baked in chunks) →
-         * supplemental → lithology → registry drift; litho/supplemental/drift use strict plausibility.
+         * Gravel g (ft): manual WELL_G_FT_BY_REF, then lithology intervals; placeholder row hints; then CSV vein/gravel_thickness
+         * only when lithology is empty or the single “no digitized table” placeholder (set window.CJ_G_VEIN_WHEN_NO_LITHO = false to disable).
+         * Does not use vein as primary when real multi-interval lithology exists. Toggle sum-all: CJ_G_LITHO_USE_SUM_ALL_INTERVALS.
          */
+        function lithologyIsOnlyChunkNoDigitizedPlaceholder(w) {
+            var layers = getLithLayers(w);
+            if (!layers || layers.length !== 1) return false;
+            var fm = lithoFormationName(layers[0]).toLowerCase();
+            if (!/no digitized|merged welllogs|open dnr report|placeholder/i.test(fm)) return false;
+            return true;
+        }
+
+        /** Any short string field on the row (and aquifer) mentions sand–gravel / S&G / unconsolidated aquifer wording. */
+        function csvRowTextImpliesSandGravelAquifer(w) {
+            if (!w || typeof w !== 'object') return false;
+            var re = /sand\s*(and|&|\/|\+)?\s*grav|sand\s*grav|\bsg\b|s\s*&\s*g|s\s*\/\s*g|unconsolidated|outwash|glacial\s*drift|pea\s*grav|gravelly/i;
+            var aq = String(w.aquifer || '');
+            if (re.test(aq.toLowerCase())) return true;
+            var keys = Object.keys(w);
+            for (var ki = 0; ki < keys.length; ki++) {
+                var k = keys[ki];
+                var kl = String(k).toLowerCase();
+                if (kl === 'lithology_json' || kl === 'id' || kl === 'lat' || kl === 'lon' || kl === 'report' || kl.indexOf('url') >= 0) continue;
+                var v = w[k];
+                if (v == null || typeof v !== 'string') continue;
+                var s = v.toLowerCase();
+                if (s.length < 4 || s.length > 600) continue;
+                if (/no digitized|merged welllogs|placeholder/i.test(s)) continue;
+                if (re.test(s)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * When lithology is only the synthetic placeholder, derive a single g candidate from registry fields (not screen).
+         * depth_bedrock → drift thickness to rock; else static_water as a capped upper bound on saturated interval.
+         */
+        function gravelGFtFromPlaceholderRowHints(w) {
+            if (!lithologyIsOnlyChunkNoDigitizedPlaceholder(w) || !csvRowTextImpliesSandGravelAquifer(w)) return null;
+            var dep = getWellDisplayDepthFt(w);
+            var depN = dep != null ? Number(dep) : NaN;
+            var db = parseFloat(String(w.depth_bedrock || '').replace(/,/g, ''));
+            if (!isNaN(db) && db > 0 && !isNaN(depN) && depN > 0 && depN + 0.5 >= db) {
+                var gRock = Math.round(Math.min(db, depN));
+                if (gRock > 0 && gThicknessIsPlausibleVsCompletedDepth(gRock, w)) return gRock;
+            }
+            var sw = parseFloat(String(w.static_water || '').replace(/,/g, ''));
+            if (!isNaN(sw) && sw > 0 && !isNaN(depN) && depN > 0 && sw < depN - 1) {
+                var gSw = Math.round(Math.min(sw, depN - 1));
+                if (gSw > 0 && gThicknessIsPlausibleVsCompletedDepth(gSw, w)) return gSw;
+            }
+            return null;
+        }
+
         function getGravelVeinDisplayFt(w) {
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
             var refKey = w.refno != null && w.refno !== '' ? String(w.refno).replace(/\.0+$/, '').trim() : '';
@@ -1317,11 +1768,10 @@
             if (gManual != null && gManual !== '' && !isNaN(Number(gManual)) && Number(gManual) > 0) {
                 return Math.round(Number(gManual));
             }
-            var vProd = getProductionVeinSizeFtFromCsv(w);
-            if (vProd != null && gBakedProductionVeinSaneVsDepth(vProd, w)) return vProd;
-            if (CJ_G_TAG_CSV_ONLY) return null;
-            var vSup = getSupplementalVeinSizeFromCsvFt(w);
-            if (vSup != null) return vSup;
+            if (cjLithoUseSumAllSandGravelIntervals()) {
+                var sumAll = sumAllSandGravelWaterBearingIntervalsFt(w);
+                if (sumAll != null && sumAll > 0 && gThicknessIsPlausibleVsCompletedDepth(sumAll, w)) return sumAll;
+            }
             var a = lastWaterBearingVeinThicknessFt(w);
             var b = sumAquiferThicknessAboveRockFt(w);
             var c = columnSandGravelTopToRockFt(w);
@@ -1333,9 +1783,19 @@
                 var mxL = Math.max.apply(null, lithoCand);
                 if (gThicknessIsPlausibleVsCompletedDepth(mxL, w)) return mxL;
             }
-            if (typeof window === 'undefined' || window.CJ_G_USE_REGISTRY_DRIFT !== false) {
-                var drift = getDriftColumnFtFromCsv(w);
-                if (drift != null && drift > 0 && gThicknessIsPlausibleVsCompletedDepth(drift, w)) return drift;
+            var ph = gravelGFtFromPlaceholderRowHints(w);
+            if (ph != null) return ph;
+            if (typeof window === 'undefined' || window.CJ_G_VEIN_WHEN_NO_LITHO !== false) {
+                var layersV = getLithLayers(w);
+                var lithEmpty = !layersV || !layersV.length;
+                if (lithEmpty || lithologyIsOnlyChunkNoDigitizedPlaceholder(w)) {
+                    var vein = cjGv2ReadProductionVeinFromCsv(w);
+                    if (vein != null && vein > 0 &&
+                        cjGv2VeinSaneVsCompletedDepth(vein, w) &&
+                        gThicknessPlausibleForCsvVeinOnlyFallback(vein, w)) {
+                        return Math.round(vein);
+                    }
+                }
             }
             return null;
         }
@@ -1359,8 +1819,7 @@
         }
 
         /**
-         * Foundation: geology only — unconsolidated (gravel) → g when vein/litho thickness resolves;
-         * otherwise bedrock path → r (rock depth or completed-depth fallback). No dry/bucket/type gating here.
+         * Map/list g vs r: gravel-class → g from lithology (getGravelVeinDisplayFt); else rock path unchanged.
          */
         function wellGrRNumberForTag(w) {
             if (isUnconsolidatedWell(w)) {
@@ -1448,7 +1907,11 @@
          */
         var WELL_G_FT_BY_REF = (function() {
             var byRef = {
-                /* example: '184649': 18, */
+                /* Placeholder lithology in chunks — screen_length was wrongly used as g; values from DNR logs until rebuild fills lithology_json. */
+                '56489': 1,
+                '187956': 14,
+                /* Morgan hatchery — S&G per DNR; chunk has only “no digitized table” lithology row (no intervals). Until WellLogs merge, tag uses screened interval from registry. */
+                '192897': 10,
             };
             var o = Object.create(null);
             for (var kr in byRef) {
@@ -1590,6 +2053,7 @@
             var totalEl = document.getElementById('totalWells');
             if (totalEl) totalEl.textContent = wells.length.toLocaleString();
 
+            /* Sidebar count + list always follow map view or search radius; map dots stay gated in refreshMap(). */
             var inRadius = searchCenter ? getWellsWithin2Miles(searchCenter) : getWellsInView();
             var visible = inRadius.filter(function(w) {
                 var dDisp = getWellDisplayDepthFt(w);
@@ -1672,7 +2136,8 @@
                         if (tagM && !grnList) parts.push('<strong class="text-slate-800 text-sm">' + tagM + '</strong>');
                         parts.push('<span style="color:' + wellTypeColor(w) + ';font-weight:600;">' + wellTypeLabel(w) + '</span>');
                         var dMode = getWellDisplayDepthFt(w);
-                        if (dMode != null) parts.push(dMode + ' ft');
+                        /* One depth phrase here only — do not repeat coreLine below (was duplicate “Gravel · 81 ft”). */
+                        parts.push(dMode != null ? dMode + ' ft' : '—');
                         if (hasElevToggles()) {
                             var be = getWellBottomElev(w);
                             var beStr = be != null ? be + ' ft ASL' : '–';
@@ -1685,8 +2150,8 @@
                             parts.push('<strong style="color:' + yieldColor(gpm) + '">' + gpmStr + '</strong>');
                             badges.push('<div class="font-bold" style="color:' + yieldColor(gpm) + ';font-size:10px;">' + (gpm != null ? gpm + ' gpm' : '–') + '</div>');
                         }
-                        detailLine = tagProminent + '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>' +
-                            '<div class="text-xs text-gray-500 mt-0.5">' + coreLine + '</div>';
+                        /* type/elev/yield row only — coreLine matched parts (type + depth) and duplicated the same ft. */
+                        detailLine = tagProminent + '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>';
                         badgeHtml = '<div style="line-height:1.3;text-align:right;">' +
                             '<div class="font-semibold text-emerald-600">' + dist + '</div>' +
                             badges.join('') + '</div>';
@@ -1708,11 +2173,15 @@
                         '<div class="text-right shrink-0 flex flex-col items-end gap-1">' + badgeHtml + '</div></div></div>';
                 });
                 if (!listToShow.length) {
-                    html = mode ?
-                        '<p class="text-gray-500 italic">No matching wells in the current view. Pan/zoom the map or adjust filters.</p>' :
-                        (searchCenter ?
-                            '<p class="text-gray-500 italic">No wells within ' + RADIUS_MI + ' mi — adjust filters or try another location.</p>' :
-                            '<p class="text-gray-500 italic">No wells in the current map view. Pan or zoom the map, or search an address / use <strong>Use My Location</strong>.</p>');
+                    if (!wells.length) {
+                        html = '<p class="text-gray-500 italic">No wells in memory yet — wait for the green banner to finish, or refresh. Then use <strong>Show wells on map</strong> or <strong>Use My Location</strong> / address / coordinates to see wells here and on the map.</p>';
+                    } else {
+                        html = mode ?
+                            '<p class="text-gray-500 italic">No matching wells in the current view. Pan/zoom the map or adjust filters.</p>' :
+                            (searchCenter ?
+                                '<p class="text-gray-500 italic">No wells within ' + RADIUS_MI + ' mi — adjust filters or try another location.</p>' :
+                                '<p class="text-gray-500 italic">No wells in the current map view. Pan or zoom the map, or search an address / use <strong>Use My Location</strong>.</p>');
+                    }
                 }
                 document.getElementById('wellsList').innerHTML = html;
 
@@ -1798,6 +2267,7 @@
                 alert('Well data not available. Refresh the page and try again.');
                 return;
             }
+            ensureFullDnrDatasetLoaded();
             wells = REAL_DNR_WELLS.slice();
             _lithoCache = {};
             cjSaveWellsToStorage();
@@ -1817,6 +2287,7 @@
                 return;
             }
             navigator.geolocation.getCurrentPosition(function(pos) {
+                ensureFullDnrDatasetLoaded();
                 gpsPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
                 userElevationM = null;
                 searchCenter = { lat: gpsPosition.lat, lon: gpsPosition.lon };
@@ -1859,10 +2330,11 @@
                 var lat = parseFloat(data[0].lat);
                 var lon = parseFloat(data[0].lon);
                 if (isNaN(lat) || isNaN(lon)) { alert('Invalid result.'); return; }
+                ensureFullDnrDatasetLoaded();
                 searchCenter = { lat: lat, lon: lon };
                 if (tempMarker) map.removeLayer(tempMarker);
-                tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
                 addMarkersInRadius();
+                tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
                 map.flyTo([lat, lon], 13, CJ_FLY_OPTS);
                 updateWellsList();
             }).catch(function() {
@@ -1878,10 +2350,11 @@
             var parts = input.split(/[, ]+/).map(function(p) { return parseFloat(p); });
             if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) { alert('Use format: 39.7605, -86.4523'); return; }
             var lat = parts[0], lon = parts[1];
+            ensureFullDnrDatasetLoaded();
             searchCenter = { lat: lat, lon: lon };
             if (tempMarker) map.removeLayer(tempMarker);
-            tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
             addMarkersInRadius();
+            tempMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'text-3xl', html: '📍', iconSize: [30, 40] }) }).addTo(map);
             map.flyTo([lat, lon], 13, CJ_FLY_OPTS);
             updateWellsList();
         }
@@ -2203,6 +2676,8 @@
                     cjSaveWellsToStorage();
                     var totalEl = document.getElementById('totalWells');
                     if (totalEl) totalEl.textContent = wells.length.toLocaleString();
+                    var smw = document.getElementById('showMapWells');
+                    if (smw) smw.checked = true;
                     addMarkersInRadius();
                     updateWellsList();
                     alert('Loaded ' + wells.length + ' wells. Use address, coordinates, or Use My Location to see wells within ' + RADIUS_MI + ' mi.');
@@ -2215,6 +2690,9 @@
                 wells = [];
                 _lithoCache = {};
                 searchCenter = null;
+                _dnrFullLoadStarted = false;
+                var smw = document.getElementById('showMapWells');
+                if (smw) smw.checked = false;
                 localStorage.removeItem('cjWells');
                 clearMarkers();
                 if (tempMarker && map) map.removeLayer(tempMarker);
@@ -2245,6 +2723,32 @@
                 var lat = Number(well.lat), lon = Number(well.lon);
                 return lat >= s && lat <= n && lon >= w && lon <= e;
             });
+        }
+
+        /** If the map shows no wells while data exists, zoom to a sample of loaded wells (demo cluster or chunk extent). */
+        function cjFitMapToWellsIfNoneVisible() {
+            if (typeof L === 'undefined' || !map) return;
+            if (!wells || !wells.length) return;
+            if (searchCenter) return;
+            var smw = document.getElementById('showMapWells');
+            if (!smw || !smw.checked) return;
+            var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
+            if (hideWells) return;
+            try {
+                if (getWellsInView().length > 0) return;
+            } catch (e0) { return; }
+            try {
+                var bounds = L.latLngBounds();
+                var cap = 4000;
+                var step = Math.max(1, Math.ceil(wells.length / cap));
+                for (var i = 0; i < wells.length; i += step) {
+                    var la = Number(wells[i].lat), lo = Number(wells[i].lon);
+                    if (!isNaN(la) && !isNaN(lo)) bounds.extend([la, lo]);
+                }
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14, animate: true });
+                }
+            } catch (e) {}
         }
 
         function getWellBottomElev(w) {
@@ -2388,8 +2892,8 @@
             return parseFloat(String(val).replace(/,/g, '').replace(/[^\d.\-]/g, ''));
         }
         /**
-         * Baked chunk columns from build_statewide_data.py (same trust as vein_size_ft): vein_size_ft,
-         * gravel_thickness_ft (often synced), rock_start_ft capped by completed depth.
+         * Precomputed vein columns on the chunk row (debug / probes / bake QA). Not used for map or list g tags.
+         * vein_size_ft, gravel_thickness_ft, rock_start_ft (capped), registry drift min(depth_bedrock, depth). No screen_length.
          */
         function getProductionVeinSizeFtFromCsv(w) {
             if (!w || typeof w !== 'object') return null;
@@ -2421,6 +2925,15 @@
                 if (nn !== 'rockstartft' && nn !== 'rockstart') continue;
                 nv = _parseCsvFt(w[pnames[pi]]);
                 if (!isNaN(nv) && nv > 0) return capGravelColFt(nv, w);
+            }
+            var depB = _parseCsvFt(w.depth);
+            var dbB = _parseCsvFt(w.depth_bedrock);
+            if (!isNaN(depB) && depB > 0 && !isNaN(dbB) && dbB > 0 && depB + 0.5 >= dbB) {
+                var gReg = Math.min(dbB, depB);
+                if (gReg > 0) {
+                    var gri = Math.round(gReg);
+                    if (gri > 0) return gri;
+                }
             }
             return null;
         }
@@ -2509,13 +3022,7 @@
         }
 
         function getVeinSize(w) {
-            if (!SHOW_G_VEIN_THICKNESS_FT) return null;
-            var prod = getProductionVeinSizeFtFromCsv(w);
-            if (prod != null && gBakedProductionVeinSaneVsDepth(prod, w)) return prod;
-            if (CJ_G_TAG_CSV_ONLY) return null;
-            var fromCol = getSupplementalVeinSizeFromCsvFt(w);
-            if (fromCol != null) return fromCol;
-            return lastWaterBearingVeinThicknessFt(w);
+            return getGravelVeinDisplayFt(w);
         }
 
         /** One-line console stats after chunk load (first N wells) — use if g/r look missing. */
@@ -2550,6 +3057,10 @@
                 console.info('[C&J]', APP_BUILD_STAMP, idOrRef, {
                     lithology_json_chars: (w.lithology_json && String(w.lithology_json).length) || 0,
                     intervals: layers ? layers.length : 0,
+                    g_v2_display: cjGv2GravelDisplayFt(w),
+                    g_v2_raw_csv: cjGv2ReadProductionVeinFromCsv(w),
+                    g_v2_depth_for_sanity: cjGv2CompletedDepthFt(w),
+                    g_v2_passes_sanity: cjGv2VeinSaneVsCompletedDepth(cjGv2ReadProductionVeinFromCsv(w), w),
                     g_display: getGravelVeinDisplayFt(w),
                     vein_ft_production: getProductionVeinSizeFtFromCsv(w),
                     vein_ft_supplemental: getSupplementalVeinSizeFromCsvFt(w),
@@ -2560,10 +3071,13 @@
                         var ik = w.id != null ? String(w.id).trim() : '';
                         return (rk && WELL_G_FT_BY_REF[rk]) || (ik && WELL_G_FT_BY_REF[ik]) || null;
                     })(),
-                    g_legacy: getVeinSize(w),
-                    sum_above_rock: sumAquiferThicknessAboveRockFt(w),
-                    col_to_rock: columnSandGravelTopToRockFt(w),
-                    rock_top_math: getRockTopFtForGravelMath(w),
+                    g_csv_raw_probe: getVeinSize(w),
+                    sum_all_sg_wb_ft: sumAllSandGravelWaterBearingIntervalsFt(w),
+                    sg_aquifer_layers: cjListSandGravelAquiferLayers(w).slice(0, 15),
+                    csv_sg_keyword_hits: cjScanRowStringsForSandGravelKeywords(w).slice(0, 10),
+                    sum_above_rock_muted: sumAquiferThicknessAboveRockFt(w),
+                    col_to_rock_muted: columnSandGravelTopToRockFt(w),
+                    rock_top_math_muted: getRockTopFtForGravelMath(w),
                     r_tag: getRockTagDepthFt(w),
                     uncon: isUnconsolidatedWell(w),
                     aquifer: w.aquifer,
@@ -2577,6 +3091,64 @@
             } catch (e) {}
             return w;
         };
+
+        /**
+         * Parse EXPECT:g35 | EXPECT:r40 | EXPECT:none from owner/notes (fixture / QA rows).
+         */
+        function cjParseExpectGrRFromRowText(w) {
+            var blob = String(w.owner || '') + ' ' + String(w.notes || '') + ' ' + String(w.loc_type || '');
+            var mG = blob.match(/\bEXPECT:\s*g\s*(\d+)\b/i);
+            if (mG) return { kind: 'g', n: parseInt(mG[1], 10) };
+            var mR = blob.match(/\bEXPECT:\s*r\s*(\d+)\b/i);
+            if (mR) return { kind: 'r', n: parseInt(mR[1], 10) };
+            if (/\bEXPECT:\s*none\b/i.test(blob)) return null;
+            return undefined;
+        }
+
+        /**
+         * Runs when ?cj_probe=1 after load. Sets window.__cjGLabelFixtureReport; logs [C&J] g-label fixtures PASS|FAIL.
+         */
+        function cjVerifyGLabelExpectations() {
+            function tagKey(t) {
+                if (!t) return 'none';
+                return t.kind + String(Math.round(t.n));
+            }
+            var report = { ok: true, checked: 0, mismatches: [], stamp: typeof APP_BUILD_STAMP !== 'undefined' ? APP_BUILD_STAMP : '' };
+            if (!wells || !wells.length) {
+                report.ok = false;
+                report.errors = ['no wells'];
+                if (typeof window !== 'undefined') window.__cjGLabelFixtureReport = report;
+                return report;
+            }
+            var i, ex, got, w;
+            for (i = 0; i < wells.length; i++) {
+                w = wells[i];
+                ex = cjParseExpectGrRFromRowText(w);
+                if (ex === undefined) continue;
+                report.checked++;
+                got = wellGrRNumberForTag(w);
+                if (tagKey(got) !== tagKey(ex)) {
+                    report.ok = false;
+                    report.mismatches.push({
+                        id: w.id,
+                        refno: w.refno,
+                        expect: tagKey(ex),
+                        got: tagKey(got),
+                        gravelDisplayFt: getGravelVeinDisplayFt(w),
+                        uncon: isUnconsolidatedWell(w)
+                    });
+                }
+            }
+            if (typeof window !== 'undefined') window.__cjGLabelFixtureReport = report;
+            try {
+                console.info('[C&J] g-label fixtures', report.ok ? 'PASS' : 'FAIL', JSON.stringify(report));
+            } catch (eLog) {}
+            return report;
+        }
+        if (typeof window !== 'undefined') {
+            window.cjVerifyGLabelExpectations = cjVerifyGLabelExpectations;
+            window.cjParseExpectGrRFromRowText = cjParseExpectGrRFromRowText;
+        }
 
         /**
          * Automated probe + DevTools: __cjProbeGLabels(5000) → JSON summary (g/r counts, chunk base, per-well rows).
@@ -2632,6 +3204,36 @@
             }
             return out;
         };
+
+        /** ?cj_litho_g=1 — dark panel under the loading banner with __cjProbeGLabels JSON (updates as chunks load). */
+        function cjUpdateLithoGDebugPanel() {
+            try {
+                var u = new URL(window.location.href || '');
+                if (u.searchParams.get('cj_litho_g') !== '1' && window.CJ_LITHO_G_URL !== true) return;
+            } catch (e) { return; }
+            if (!wells || !wells.length) return;
+            var lim = Math.min(5000, wells.length);
+            var probe = typeof window.__cjProbeGLabels === 'function' ? window.__cjProbeGLabels(lim) : null;
+            var el = document.getElementById('cj-litho-g-debug');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'cj-litho-g-debug';
+                el.setAttribute('data-cj-litho-g', '1');
+                el.style.cssText = 'margin:0 0 1rem 0;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:12px;font:12px/1.45 ui-monospace,monospace;max-height:42vh;overflow:auto;border:2px solid #34d399;';
+                var lp = document.getElementById('loadingDnrPanel');
+                if (lp && lp.parentNode) lp.parentNode.insertBefore(el, lp.nextSibling);
+                else if (document.body) document.body.insertBefore(el, document.body.firstChild);
+            }
+            var stamp = typeof APP_BUILD_STAMP !== 'undefined' ? APP_BUILD_STAMP : '';
+            var sumAll = typeof cjLithoUseSumAllSandGravelIntervals === 'function' && cjLithoUseSumAllSandGravelIntervals();
+            var veinFb = typeof window === 'undefined' || window.CJ_G_VEIN_WHEN_NO_LITHO !== false;
+            el.innerHTML = '<div style="color:#34d399;font-weight:800;margin-bottom:6px;font-size:14px">cj_litho_g=1 · lithology / gravel “g” debug</div>' +
+                '<div style="color:#94a3b8;margin-bottom:8px">Build <strong style="color:#fafafa">' + stamp + '</strong> · <span style="color:#fafafa">' + wells.length.toLocaleString() + '</span> wells (probed first ' + lim.toLocaleString() + ') · sumAllIntervals=' + sumAll + ' · veinFallback=' + veinFb + '</div>' +
+                '<pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-size:11px">' + (probe ? JSON.stringify(probe, null, 2) : '{}') + '</pre>' +
+                '<p style="margin:8px 0 0 0;color:#94a3b8;font-size:11px">Console: <code style="color:#fbbf24">__cjDebugG(\'DNR-123\')</code> · <code style="color:#fbbf24">__cjProbeGLabels(200)</code></p>';
+            try { console.info('[C&J] cj_litho_g=1 panel · wells=', wells.length, probe); } catch (eLog) {}
+        }
+        if (typeof window !== 'undefined') window.cjUpdateLithoGDebugPanel = cjUpdateLithoGDebugPanel;
 
         function passesElevFilter(w, elevRanges) {
             if (!elevRanges.length) return true;
@@ -2717,6 +3319,11 @@
 
             var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
             if (hideWells) {
+                updateWellsList();
+                return;
+            }
+
+            if (!userRequestedWellMarkers()) {
                 updateWellsList();
                 return;
             }

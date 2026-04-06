@@ -1,0 +1,21 @@
+refno,id,lat,lon,depth,county,aquifer,vein_size_ft,depth_bedrock,loc_type,owner,lithology_json
+991001,DNR-991001,39.6000,-86.5000,120,Hendricks,Unconsolidated,35,,Field Located,PROBE-G-OK EXPECT:g35,
+991002,DNR-991002,39.6001,-86.5001,120,Hendricks,Unconsolidated,118,,Field Located,PROBE-G-THICK EXPECT:g118,
+991003,DNR-991003,39.6002,-86.5002,200,Marion,Limestone,,45,Field Located,PROBE-R-OK EXPECT:r45,
+991004,DNR-991004,39.6003,-86.5003,100,Hendricks,Unconsolidated,,,Field Located,PROBE-NO-VEIN EXPECT:none,
+991005,DNR-991005,39.6004,-86.5004,100,Hendricks,Unconsolidated,100,,Field Located,PROBE-G-EQ-DEPTH EXPECT:none,
+991006,DNR-991006,39.6005,-86.5005,80,Hendricks,Unconsolidated,75,,Field Located,NEAR-RATIO-VEIN EXPECT:g75,
+991007,DNR-991007,39.6006,-86.5006,50,Hendricks,Unconsolidated,40,,Field Located,MID-VEIN EXPECT:g40,
+991008,DNR-991008,39.6007,-86.5007,100,Hendricks,Unconsolidated,99,,Field Located,SUM-TWO-ZONES EXPECT:g25,"[{""top"":0,""bottom"":10,""formation"":""sand and gravel""},{""top"":10,""bottom"":25,""formation"":""SA & GR""}]"
+991009,DNR-991009,39.6008,-86.5008,200,Hendricks,Bedrock,,55,Field Located,BEDROCK-REG EXPECT:r55,
+991010,DNR-991010,39.6009,-86.5009,90,Hendricks,Unconsolidated,30,,Field Located,PLACEHOLDER-VEIN EXPECT:g30,"[{""top"":0,""bottom"":100,""formation"":""No digitized table — open DNR report""}]"
+991011,DNR-991011,39.6010,-86.5010,88,Hendricks,Sandstone,,,Field Located,SANDSTONE-AQ EXPECT:r88,
+991012,DNR-991012,39.6011,-86.5011,120,Hendricks,Unconsolidated,,,Field Located,LITHO-ONLY EXPECT:g42,"[{""top"":0,""bottom"":42,""formation"":""sand and gravel""}]"
+991013,DNR-991013,39.6012,-86.5012,60,Hendricks,Unconsolidated,,,Field Located,CLAYEY-SAND EXPECT:g18,"[{""top"":0,""bottom"":18,""formation"":""clayey sand""}]"
+991014,DNR-991014,39.6013,-86.5013,70,Hendricks,Unconsolidated,,,Field Located,SA-ABBR EXPECT:g22,"[{""top"":0,""bottom"":22,""formation"":""SA""}]"
+991015,DNR-991015,39.6014,-86.5014,120,Hendricks,Unconsolidated,119,,Field Located,VEIN-119-120 EXPECT:g119,
+991016,DNR-991016,39.6015,-86.5015,100,Hendricks,Unconsolidated,98,,Field Located,VEIN-98-100 EXPECT:g98,
+991017,DNR-991017,39.6016,-86.5016,100,Hendricks,Unconsolidated,100,,Field Located,VEIN-EQ-TD EXPECT:none,
+991018,DNR-991018,39.6017,-86.5017,70,Hendricks,Unconsolidated,,,Field Located,DRIFT-ONLY-SUM EXPECT:g60,"[{""top"":0,""bottom"":60,""formation"":""sand and gravel""}]"
+991019,DNR-991019,39.6018,-86.5018,95,Hendricks,Unconsolidated,,,Field Located,EMPTY-LITHO EXPECT:none,
+991020,DNR-991020,39.6019,-86.5019,120,Hendricks,Unconsolidated,119.6,,Field Located,VEIN-ROUNDS-TO-TD EXPECT:none,

@@ -4,6 +4,7 @@
 .DS_Store
 .vercel-cli-cache/
 .cache-xdg/
+.pw-browsers/
 __pycache__/
 *.py[cod]
 .Python

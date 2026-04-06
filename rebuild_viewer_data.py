@@ -21,6 +21,24 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHUNK_BASE = os.environ.get("DNR_CHUNK_FILE_PREFIX", "dnr_wells_chunk").strip().rstrip("_")
+
+
+def _build_statewide_script_is_enriched_schema(script_path: str) -> bool:
+    """
+    Old copies of build_statewide_data.py wrote slim ArcGIS-only chunk headers (no aquifer / vein_size_ft).
+    Refuse to run so the user replaces the file from this repo.
+    """
+    try:
+        with open(script_path, encoding="utf-8", errors="replace") as f:
+            txt = f.read()
+    except OSError:
+        return False
+    return (
+        '"aquifer"' in txt
+        and "vein_size_ft" in txt
+        and "lithology_json" in txt
+        and "prefix {CHUNK_BASE}_)" in txt
+    )
 REQUIRED_HEADER_TOKENS = (
     "refno",
     "lat",
@@ -37,10 +55,26 @@ def verify_chunk0(out_dir: str) -> None:
         print(f"ERROR: missing {path}", file=sys.stderr)
         sys.exit(1)
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
-        header = f.readline().lower()
+        header_raw = f.readline()
+    header = header_raw.lower()
     for tok in REQUIRED_HEADER_TOKENS:
         if tok not in header:
             print(f"ERROR: {path} header missing required column {tok!r}", file=sys.stderr)
+            print(
+                f"  First line (truncated): {header_raw[:220]!r}{'…' if len(header_raw) > 220 else ''}",
+                file=sys.stderr,
+            )
+            if header_raw.lstrip("\ufeff").lower().startswith("refno,") and "aquifer" not in header:
+                print(
+                    "  Hint: header looks like a raw ArcGIS export or chunk_dnr_csv.py output — not build_statewide_data.py.",
+                    file=sys.stderr,
+                )
+                print(
+                    "  Fix: update this repo (build_statewide_data.py should print "
+                    "'Writing chunks of … (prefix dnr_wells_chunk_)…' with id, aquifer, vein_size_ft, lithology_json), "
+                    "then run: python3 rebuild_viewer_data.py",
+                    file=sys.stderr,
+                )
             sys.exit(1)
     # Expect at least one more data row
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
@@ -68,6 +102,20 @@ def main() -> None:
 
     if not args.skip_build:
         script = os.path.join(SCRIPT_DIR, "build_statewide_data.py")
+        if not os.path.isfile(script):
+            print(f"ERROR: missing {script}", file=sys.stderr)
+            sys.exit(1)
+        if not _build_statewide_script_is_enriched_schema(script):
+            print(
+                "ERROR: build_statewide_data.py in this folder is an OLD copy — it does not write "
+                "aquifer, vein_size_ft, or lithology_json columns.\n"
+                f"  Expected file: {script}\n"
+                "  Fix: replace it with the version from this repo (git pull / copy the file), then rerun.\n"
+                "  Good build prints: 'Writing chunks of … (prefix dnr_wells_chunk_)…' and "
+                "'build_statewide_data.py (enriched chunks): …' with this directory.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         env = os.environ.copy()
         env["DNR_OUT_DIR"] = out_dir
         r = subprocess.run([sys.executable, script], cwd=SCRIPT_DIR, env=env)
@@ -75,6 +123,14 @@ def main() -> None:
             sys.exit(r.returncode)
 
     verify_chunk0(out_dir)
+    vscript = os.path.join(SCRIPT_DIR, "verify_vein_g_production.py")
+    chunk0 = os.path.join(out_dir, f"{CHUNK_BASE}_0.csv.gz")
+    if os.path.isfile(vscript) and os.path.isfile(chunk0):
+        subprocess.run(
+            [sys.executable, vscript, "--all-chunks", "--chunk", chunk0],
+            cwd=SCRIPT_DIR,
+            check=False,
+        )
     n_extra = 0
     chunk_re = re.compile(rf"^{re.escape(CHUNK_BASE)}_(\d+)\.csv\.gz$")
     for fn in os.listdir(out_dir):
@@ -84,8 +140,8 @@ def main() -> None:
     if n_extra:
         print(f"Deploy all {CHUNK_BASE}_0.csv.gz … {CHUNK_BASE}_{n_extra - 1}.csv.gz with index.html.")
         print(
-            f"Viewer loads exactly {n_extra} chunk file(s). If that is not 8, set window.CJ_DNR_CHUNK_COUNT = {n_extra} "
-            "before load, or change the default `dnrChunkExpected` in index.html → loadFullDnrDataset."
+            f"Viewer loads exactly {n_extra} chunk file(s). If index.html default chunks differ, set "
+            f"window.CJ_DNR_CHUNK_COUNT = {n_extra} before load, or change `dnrChunkExpected` in index.html."
         )
 
 

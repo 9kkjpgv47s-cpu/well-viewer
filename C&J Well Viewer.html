@@ -990,8 +990,8 @@
 
         function isUnconsolidatedWell(w) {
             var aq = (w.aquifer || "").toLowerCase();
-            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("sand") >= 0 || aq.indexOf("gravel") >= 0) return true;
-            if (aq.indexOf("bedrock") >= 0 || aq.indexOf("limestone") >= 0 || aq.indexOf("dolomite") >= 0 || aq.indexOf("shale") >= 0 || aq.indexOf("sandstone") >= 0 || aq.indexOf("siltstone") >= 0) return false;
+            if (/\b(bedrock|limestone|dolomite|dolostone|shale|sandstone|siltstone|greensand|granite|marble|basalt|quartzite|chert|gneiss|schist|conglomerate)\b/.test(aq)) return false;
+            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("gravel") >= 0 || aq.indexOf("sand") >= 0) return true;
 
             var db = parseFloat(w.depth_bedrock || "");
             var depth = parseFloat(w.depth || "");
