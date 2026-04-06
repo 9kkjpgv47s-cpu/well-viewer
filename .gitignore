@@ -24,7 +24,10 @@ well-driller-dash-board/
 well-driller-dashboard/
 apps/hub/
 
-# Large source CSV stays local; only the 2 gzipped chunks are committed and deployed.
+# Full export: raw CSV is ~106 MB (over GitHub's 100 MB file cap). The canonical copy in git is
+# dnr_wells_full.csv.gz — same rows as dnr_wells_full.csv after decompressing:
+#   gzip -dk dnr_wells_full.csv.gz
+# Keep the uncompressed file local only so it is not committed by mistake.
 dnr_wells_full.csv
 dnr_wells_slim.csv
 dnr_wells_slim.csv.gz
