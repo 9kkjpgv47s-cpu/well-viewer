@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-04-gravel-g-vein" />
+    <meta name="cj-build" content="2026-04-04-litho-g-r-dynamic" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -501,7 +501,7 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-04-gravel-g-vein';
+        var APP_BUILD_STAMP = '2026-04-04-litho-g-r-dynamic';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
          * 1) Optional numeric columns on the row (gravel production thickness in ft).
@@ -981,8 +981,50 @@
             return { top: top, bot: bot };
         }
 
-        var _rockFormations = /lime|dolomite|shale|slate|sandstone|siltstone|bedrock|granite|marble|rock/i;
         var _gravelFormations = /gravel|sand\s*(&|and)\s*gravel|gravel\s*(&|and)\s*sand/i;
+
+        /** Normalize formation text for tolerant matching (DNR logs vary widely). */
+        function normalizeFormationForLitho(s) {
+            return String(s == null ? '' : s)
+                .replace(/\u00a0/g, ' ')
+                .replace(/[＆﹠]/g, '&')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+        }
+
+        /** Whole-string or token rock abbreviations (HS hard shale, AS soft shale, SS sandstone, etc.). */
+        var _rockAbbrevToken = {
+            hs: 1, as: 1, sh: 1, ss: 1, ls: 1, lm: 1, dl: 1, slt: 1, sst: 1, ch: 1, bd: 1, st: 1, mdl: 1, lst: 1,
+            arg: 1, sil: 1, gn: 1, gnss: 1, bas: 1, dol: 1, lms: 1, shs: 1
+        };
+
+        function formationIndicatesRockTop(fmRaw) {
+            if (formationHasGravelVein(fmRaw)) return false;
+            var fm = normalizeFormationForLitho(fmRaw);
+            if (!fm) return false;
+            if (/dry\s*hole|no\s*water|abandon|plugged/i.test(fm)) return false;
+            /* Full-word / phrase bedrock (exclude "rock" inside "sand and gravel"). */
+            if (/\b(lime\s*stone|limestone|dolomite|dolostone|shale|slate|mudstone|claystone|siltstone|sandstone|chert|granite|gneiss|basalt|bedrock|marble|coal)\b/.test(fm)) return true;
+            if (/\brock\b/.test(fm) && !/sand|grav|gravel|drift|outwash/i.test(fm)) return true;
+            /* "soft shale" / "hard shale" spelled out */
+            if (/\b(soft|hard|stiff)\s+shale\b/.test(fm)) return true;
+            /* Single-token or comma/slash-separated codes: "HS", "AS / LS", "SH,LM" */
+            if (/^(hs|as|sh|ss|ls|lm|dl|slt|sst|ch|bd|st|mdl)$/.test(fm)) return true;
+            var parts = fm.split(/[,;/|]+/);
+            for (var pi = 0; pi < parts.length; pi++) {
+                var seg = parts[pi].replace(/^[.\s]+|[.\s]+$/g, '').trim();
+                if (!seg) continue;
+                if (_rockAbbrevToken[seg]) return true;
+            }
+            /* Space-separated letter codes: "SI SH" — rock tokens (SI SA GR is gravel, skipped above) */
+            var toks = fm.split(/\s+/);
+            for (var ti = 0; ti < toks.length; ti++) {
+                var t = toks[ti].replace(/^[("]+|[)"']+$/g, '');
+                if (_rockAbbrevToken[t]) return true;
+            }
+            return false;
+        }
 
         function lastLithoFormation(w) {
             var layers = getLithLayers(w);
@@ -1003,8 +1045,8 @@
             for (var i = 0; i < layers.length; i++) {
                 var tb = lithoLayerTopBottomFt(layers[i], prevBot);
                 if (!isNaN(tb.bot)) prevBot = tb.bot;
-                var fm = lithoFormationName(layers[i]).toLowerCase();
-                if (_rockFormations.test(fm) && fm.indexOf('sand and') === -1 && fm.indexOf('gravel') === -1) {
+                var fmRaw = lithoFormationName(layers[i]);
+                if (formationIndicatesRockTop(fmRaw)) {
                     if (!isNaN(tb.top) && tb.top >= 0) return Math.round(tb.top);
                 }
             }
@@ -1020,19 +1062,25 @@
         }
 
         /**
-         * "g" = thickness (ft) of **gravel-bearing** production zone(s), not plain sand thickness.
-         * DNR-style: GRAVEL, PEA GRAV, SA & GR, W GRAV, WATER GRAV, SAND & GRAVEL, GRAVELLY SAND, etc.
+         * "g" = thickness (ft) of **gravel-bearing** or typical **sand-and-gravel aquifer** intervals
+         * (not plain sand-only). Handles inconsistent DNR / driller wording and abbreviations.
          */
         function formationHasGravelVein(fmRaw) {
-            var fm = String(fmRaw == null ? '' : fmRaw);
-            var l = fm.toLowerCase();
-            if (!l.trim()) return false;
+            var l = normalizeFormationForLitho(fmRaw);
+            if (!l) return false;
             if (/dry\s*hole|no\s*water|abandon|plugged/i.test(l)) return false;
-            if (/\bsandstone\b|\bsiltstone\b/i.test(l) && !/grav/i.test(l)) return false;
-            if (/\b(shale|limestone|dolomite|bedrock)\b/i.test(l) && !/sand|grav|gravel|drift|outwash/i.test(l)) return false;
+            var sandGravelCombo = /grav|gravel|sand\s+and\s+gravel|gravel\s+and\s+sand|sand\s*,\s*gravel|gravel\s*,\s*sand|sand\s*(?:[&+/]|\()\s*gravel|gravel\s*(?:[&+/]|\()\s*sand/i;
+            /* Consolidated rock names without any unconsolidated indicator */
+            if (/\bsandstone\b|\bsiltstone\b/i.test(l) && !sandGravelCombo.test(l)) return false;
+            if (/\b(shale|limestone|dolomite|bedrock)\b/i.test(l) && !/sand|grav|gravel|drift|outwash|glacial|esker|kame/i.test(l)) return false;
             if (/grav|gravel|pea\s*grav|gravelly|w\s*\/\s*grav|water\s*grav|water\s*gravel|w\.?\s*grav/i.test(l)) return true;
-            if (/g\s*&\s*g|s\s*&\s*g|s\.\s*g\.|s\/g\b/i.test(l)) return true;
-            if (/sand\s*(\(|&|and|\/|,)\s*gravel|gravel\s*(\(|&|and|\/|,)\s*sand/i.test(l)) return true;
+            /* S&G, S & G, S+G, S/G, S.G., SNG */
+            if (/s\s*&\s*g\b|s\s*\+\s*g\b|s\s*\/\s*g\b|s\.\s*g\.|\bsng\b/i.test(l)) return true;
+            if (sandGravelCombo.test(l)) return true;
+            /* Common production aquifer materials described without the word "gravel" */
+            if (/\boutwash\b|\bglacial\s+drift\b|\besker\b|\bkame\b|\bterrace\s+(grav|gravel|sand)/i.test(l)) return true;
+            /* Very short driller codes: "SA GR", "SI SA GR", "W GR" */
+            if (/\bsa\s+gr\b|\bsi\s+sa\s+gr\b|\bw\s+gr\b/.test(l)) return true;
             if (/\bgr\b/.test(l) && !/grout|program|agree|energy|degree|dig/i.test(l)) return true;
             return false;
         }
