@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-04-map-controls-search" />
+    <meta name="cj-build" content="2026-04-04-gravel-g-vein" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -501,11 +501,12 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-04-map-controls-search';
+        var APP_BUILD_STAMP = '2026-04-04-gravel-g-vein';
         /**
          * Gravel “g” + ft — CSV only, no DNR API for this label:
-         * 1) Optional numeric columns on the row: g_vein_ft, gravel_vein_ft, vein_thickness_ft, gravel_interval_ft, g_ft
-         * 2) Else parse intervals from lithology_json / lithology cell text (JSON array in CSV).
+         * 1) Optional numeric columns on the row (gravel production thickness in ft).
+         * 2) Else parse intervals from lithology_json — thickest **gravel-bearing** production interval
+         *    (sand-only intervals do not produce a g label; r uses depth-to-rock separately).
          * getVeinSize / getLithLayers never call fetch(); modal DNR API is unrelated to map g.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
@@ -869,9 +870,12 @@
             var z = arr[0];
             return z.top != null || z.bottom != null || z.Top != null || z.Bottom != null ||
                 z.from != null || z.to != null || z.From != null || z.To != null ||
+                z.FromDepth != null || z.ToDepth != null || z.FROM_DEPTH != null || z.TO_DEPTH != null ||
                 z.depth_top != null || z.depth_bottom != null || z.DepthTop != null || z.DepthBottom != null ||
                 z.start_depth != null || z.end_depth != null ||
-                z.formation != null || z.Formation != null || z.material != null || z.Material != null;
+                z.fromdepth != null || z.todepth != null ||
+                z.formation != null || z.Formation != null || z.material != null || z.Material != null ||
+                z.lithology != null || z.Lithology != null || z.description != null || z.Description != null;
         }
         function tryParseLithologyArray(raw) {
             if (raw == null || raw === '') return null;
@@ -898,6 +902,10 @@
                 var j = JSON.parse(s);
                 if (typeof j === 'string') j = JSON.parse(String(j).trim().replace(/^\ufeff/, ''));
                 if (j && j.length && lithologyLooksLikeIntervals(j)) return j;
+                if (j && j.intervals && j.intervals.length && lithologyLooksLikeIntervals(j.intervals)) return j.intervals;
+                if (j && j.data && j.data.length && lithologyLooksLikeIntervals(j.data)) return j.data;
+                if (j && j.rows && j.rows.length && lithologyLooksLikeIntervals(j.rows)) return j.rows;
+                if (j && j.lithology && j.lithology.length && lithologyLooksLikeIntervals(j.lithology)) return j.lithology;
             } catch (e) {}
             return null;
         }
@@ -934,7 +942,13 @@
 
         function lithoFormationName(layer) {
             if (!layer || typeof layer !== 'object') return '';
-            return String(layer.formation || layer.Formation || layer.material || layer.Material || layer.lithology || layer.Lithology || layer.description || layer.strata || '').trim();
+            return String(
+                layer.formation || layer.Formation || layer.FORMATION || layer.material || layer.Material ||
+                layer.lithology || layer.Lithology || layer.LITHOLOGY || layer.description || layer.Description ||
+                layer.strata || layer.Strata || layer.formationname || layer.FormationName ||
+                layer.zone || layer.Zone || layer.desc || layer.Desc || layer.remarks || layer.Remarks ||
+                layer.MATERIAL || ''
+            ).trim();
         }
 
         function lithoParseDepthFt(v) {
@@ -945,8 +959,20 @@
         /** Read top/bottom (ft) from one log interval; carry forward previous bottom when top missing. */
         function lithoLayerTopBottomFt(L, prevBot) {
             if (!L || typeof L !== 'object') return { top: NaN, bot: NaN };
-            var top = lithoParseDepthFt(L.top != null ? L.top : L.Top != null ? L.Top : L.from != null ? L.from : L.From != null ? L.From : L.depth_top != null ? L.depth_top : L.DepthTop != null ? L.DepthTop : L.start_depth != null ? L.start_depth : L.StartDepth);
-            var bot = lithoParseDepthFt(L.bottom != null ? L.bottom : L.Bottom != null ? L.Bottom : L.to != null ? L.to : L.To != null ? L.To : L.depth_bottom != null ? L.depth_bottom : L.DepthBottom != null ? L.DepthBottom : L.end_depth != null ? L.end_depth : L.EndDepth);
+            var top = lithoParseDepthFt(
+                L.top != null ? L.top : L.Top != null ? L.Top : L.from != null ? L.from : L.From != null ? L.From :
+                L.from_ft != null ? L.from_ft : L.top_ft != null ? L.top_ft : L.fromdepth != null ? L.fromdepth :
+                L.FromDepth != null ? L.FromDepth : L.FROM_DEPTH != null ? L.FROM_DEPTH :
+                L.depth_top != null ? L.depth_top : L.DepthTop != null ? L.DepthTop : L.start_depth != null ? L.start_depth :
+                L.StartDepth != null ? L.StartDepth : L.start != null ? L.start : L.Start != null ? L.Start : L.begin != null ? L.begin : NaN
+            );
+            var bot = lithoParseDepthFt(
+                L.bottom != null ? L.bottom : L.Bottom != null ? L.Bottom : L.to != null ? L.to : L.To != null ? L.To :
+                L.to_ft != null ? L.to_ft : L.bottom_ft != null ? L.bottom_ft : L.todepth != null ? L.todepth :
+                L.ToDepth != null ? L.ToDepth : L.TO_DEPTH != null ? L.TO_DEPTH :
+                L.depth_bottom != null ? L.depth_bottom : L.DepthBottom != null ? L.DepthBottom : L.end_depth != null ? L.end_depth :
+                L.EndDepth != null ? L.EndDepth : L.end != null ? L.end : L.End != null ? L.End : L.stop != null ? L.stop : NaN
+            );
             if (isNaN(bot)) return { top: top, bot: NaN };
             if (isNaN(top)) {
                 if (!isNaN(prevBot)) top = prevBot;
@@ -985,68 +1011,112 @@
             return null;
         }
 
-        function isWaterBearingFormation(fmRaw) {
-            var l = String(fmRaw == null ? '' : fmRaw).toLowerCase();
+        /** Cement / surface seal — not part of a gravel production vein. */
+        function isNonproductiveLithologyRow(low) {
+            if (!low || !String(low).trim()) return true;
+            if (/dry\s*hole|no\s*water|abandon|plugged|cement\s*fill/i.test(low)) return true;
+            return /\b(cement|grout|surface\s*seal|bentonite\s*seal|drive\s*shoe|empty\s*hole|void|fill|seal\s*only)\b/i.test(low) &&
+                !/grav|gravel|sand/i.test(low);
+        }
+
+        /**
+         * "g" = thickness (ft) of **gravel-bearing** production zone(s), not plain sand thickness.
+         * DNR-style: GRAVEL, PEA GRAV, SA & GR, W GRAV, WATER GRAV, SAND & GRAVEL, GRAVELLY SAND, etc.
+         */
+        function formationHasGravelVein(fmRaw) {
+            var fm = String(fmRaw == null ? '' : fmRaw);
+            var l = fm.toLowerCase();
             if (!l.trim()) return false;
-            if (/dry\s*hole|no\s*water|abandon|plugged|cement\s*fill/i.test(l)) return false;
-            if (/grav|gravel|s\s*&\s*g|sand\s*grav|water\s*b\.?|water\s*bearing|water\s*grav|pea\s*grav|gravelly|w\s*\/\s*grav|producing|\baquifer\b|unconsolidated|water\s*zone|pervious|glacial\s*drift/i.test(l)) return true;
-            if (l.indexOf('sandstone') >= 0 || l.indexOf('siltstone') >= 0) return false;
-            if (/\bwet\b/.test(l) && /sand|grav|gravel|sa\b|gr\b|silt|drift/i.test(l)) return true;
-            // DNR logs often abbreviate sand/gravel as "SA", "GR", "SA & GR", "SI SA", etc. (full words "sand"/"gravel" missing)
-            if (/\b(sa|gr)\b/.test(l)) return true;
-            // "Clayey sand" failed before because indexOf('clay') hits inside "clayey"
-            if (/\bsand\b/.test(l) && (/\bclayey\s*sand\b|sandy\s*clay|sand\s*(and|&|\/)\s*clay|clay\s*(and|&|\/)\s*sand/i.test(l))) return true;
-            if (/\bsand\b/.test(l) && l.indexOf('clay') < 0) return true;
-            if (l.indexOf('sand') >= 0 && (l.indexOf('gravel') >= 0 || l.indexOf('water') >= 0 || l.indexOf('bearing') >= 0)) return true;
+            if (/dry\s*hole|no\s*water|abandon|plugged/i.test(l)) return false;
+            if (/\bsandstone\b|\bsiltstone\b/i.test(l) && !/grav/i.test(l)) return false;
+            if (/\b(shale|limestone|dolomite|bedrock)\b/i.test(l) && !/sand|grav|gravel|drift|outwash/i.test(l)) return false;
+            if (/grav|gravel|pea\s*grav|gravelly|w\s*\/\s*grav|water\s*grav|water\s*gravel|w\.?\s*grav/i.test(l)) return true;
+            if (/g\s*&\s*g|s\s*&\s*g|s\.\s*g\.|s\/g\b/i.test(l)) return true;
+            if (/sand\s*(\(|&|and|\/|,)\s*gravel|gravel\s*(\(|&|and|\/|,)\s*sand/i.test(l)) return true;
+            if (/\bgr\b/.test(l) && !/grout|program|agree|energy|degree|dig/i.test(l)) return true;
             return false;
         }
 
-        function lastWaterBearingVeinThicknessFt(w) {
+        function sortLithLayersByDepth(layers) {
+            return layers.slice().sort(function(a, b) {
+                var tba = lithoLayerTopBottomFt(a, NaN);
+                var tbb = lithoLayerTopBottomFt(b, NaN);
+                var ta = tba.top, tb = tbb.top;
+                if (isNaN(ta) && !isNaN(tba.bot)) ta = tba.bot;
+                if (isNaN(tb) && !isNaN(tbb.bot)) tb = tbb.bot;
+                if (isNaN(ta) && isNaN(tb)) return 0;
+                if (isNaN(ta)) return 1;
+                if (isNaN(tb)) return -1;
+                if (ta !== tb) return ta - tb;
+                var ba = isNaN(tba.bot) ? ta : tba.bot;
+                var bb = isNaN(tbb.bot) ? tb : tbb.bot;
+                return ba - bb;
+            });
+        }
+
+        /** Longest merged run of adjacent gravel-bearing intervals (by measured depth), in feet. */
+        function gravelVeinThicknessFtFromLithology(w) {
             var layers = getLithLayers(w);
             if (!layers || !layers.length) return null;
-            var bestBottom = -Infinity;
-            var bestThick = null;
+            var sorted = sortLithLayersByDepth(layers);
             var prevBot = NaN;
-            for (var i = 0; i < layers.length; i++) {
-                var L = layers[i];
+            var bestThick = null;
+            var runTop = NaN;
+            var runBot = NaN;
+            function flushRun() {
+                if (!isNaN(runTop) && !isNaN(runBot) && runBot > runTop) {
+                    var th = runBot - runTop;
+                    if (bestThick == null || th > bestThick) bestThick = th;
+                }
+                runTop = NaN;
+                runBot = NaN;
+            }
+            for (var i = 0; i < sorted.length; i++) {
+                var L = sorted[i];
                 var fm = lithoFormationName(L);
+                var low = fm.toLowerCase();
                 var tb = lithoLayerTopBottomFt(L, prevBot);
-                if (isNaN(tb.bot)) continue;
-                prevBot = tb.bot;
+                if (!isNaN(tb.bot)) prevBot = tb.bot;
+                if (isNonproductiveLithologyRow(low)) {
+                    flushRun();
+                    continue;
+                }
+                if (!formationHasGravelVein(fm)) {
+                    flushRun();
+                    continue;
+                }
                 var top = tb.top;
                 var bot = tb.bot;
-                if (!isWaterBearingFormation(fm)) continue;
-                if (bot <= top) continue;
-                var thick = bot - top;
-                if (bot > bestBottom || (Math.abs(bot - bestBottom) < 1e-6 && bestThick != null && thick > bestThick)) {
-                    bestBottom = bot;
-                    bestThick = thick;
+                if (isNaN(bot) || bot <= top) {
+                    flushRun();
+                    continue;
+                }
+                if (isNaN(runTop)) {
+                    runTop = top;
+                    runBot = bot;
+                } else if (top <= runBot + 0.05) {
+                    if (bot > runBot) runBot = bot;
+                } else {
+                    flushRun();
+                    runTop = top;
+                    runBot = bot;
                 }
             }
+            flushRun();
             if (bestThick != null) return Math.round(bestThick);
-            /* Fallback: deepest sand/gravel/S&G interval even if strict water-bearing wording missing (still lithology-only). */
-            bestBottom = -Infinity;
-            bestThick = null;
             prevBot = NaN;
-            for (var j = 0; j < layers.length; j++) {
-                var L2 = layers[j];
+            for (var j = 0; j < sorted.length; j++) {
+                var L2 = sorted[j];
                 var fm2 = lithoFormationName(L2);
-                var l2 = fm2.toLowerCase();
-                if (!l2.trim() || /dry\s*hole|no\s*water|abandon|plugged/i.test(l2)) continue;
-                if ((/shale|limestone|dolomite|bedrock|granite|marble/i.test(l2) || /\b(ls|lm|dl)\b/i.test(l2)) && !/sand|grav|gravel|drift/i.test(l2)) continue;
-                if (!/grav|gravel|\bsand\b|\bsa\b|\bgr\b|s\s*&\s*g|drift|outwash|glacial/i.test(l2)) continue;
+                var low2 = fm2.toLowerCase();
                 var tb2 = lithoLayerTopBottomFt(L2, prevBot);
-                if (isNaN(tb2.bot)) continue;
-                prevBot = tb2.bot;
-                if (tb2.bot <= tb2.top) continue;
-                var th2 = tb2.bot - tb2.top;
-                if (tb2.bot > bestBottom || (Math.abs(tb2.bot - bestBottom) < 1e-6 && bestThick != null && th2 > bestThick)) {
-                    bestBottom = tb2.bot;
-                    bestThick = th2;
-                }
+                if (!isNaN(tb2.bot)) prevBot = tb2.bot;
+                if (isNonproductiveLithologyRow(low2) || !formationHasGravelVein(fm2)) continue;
+                if (isNaN(tb2.bot) || tb2.bot <= tb2.top) continue;
+                var th = tb2.bot - tb2.top;
+                if (bestThick == null || th > bestThick) bestThick = th;
             }
-            if (bestThick == null) return null;
-            return Math.round(bestThick);
+            return bestThick != null ? Math.round(bestThick) : null;
         }
 
         var DRY_HOLE_COMMENT_RE = /dry hole|dry test|dry well|no water|abandoned|\bplugged\b|insufficient|bad water|can\x27t locate|cannot locate/i;
@@ -1890,12 +1960,26 @@
 
         function getVeinSizeFromCsvNumericColumns(w) {
             if (!w || typeof w !== 'object') return null;
-            var keys = ['g_vein_ft', 'gravel_vein_ft', 'vein_thickness_ft', 'gravel_interval_ft', 'g_ft', 'gravel_vein'];
+            var keys = [
+                'g_vein_ft', 'gravel_vein_ft', 'gravel_vein_thickness_ft', 'gravel_production_ft', 'production_gravel_ft',
+                'gravel_thickness_ft', 'gravel_interval_ft', 'gravel_zone_ft', 'gravel_pay_ft',
+                'vein_thickness_ft', 'g_ft', 'gravel_vein', 'gravel_ft', 'grav_vein_ft', 'g_vein'
+            ];
             for (var i = 0; i < keys.length; i++) {
                 var v = w[keys[i]];
                 if (v == null || v === '') continue;
                 var n = parseFloat(String(v).replace(/,/g, '').replace(/[^\d.\-]/g, ''));
                 if (!isNaN(n) && n > 0) return Math.round(n);
+            }
+            for (var k in w) {
+                if (!Object.prototype.hasOwnProperty.call(w, k)) continue;
+                var kl = String(k).toLowerCase().replace(/[\s\-]/g, '_');
+                if (!/(^|_)g(_|$)|gravel.*vein|vein.*gravel|gravel_(thick|interval|prod|pay|zone)/.test(kl)) continue;
+                if (/bedrock|rock_depth|depth_rock|r_ft|^r$/.test(kl)) continue;
+                var vv = w[k];
+                if (vv == null || vv === '') continue;
+                var n2 = parseFloat(String(vv).replace(/,/g, '').replace(/[^\d.\-]/g, ''));
+                if (!isNaN(n2) && n2 > 0) return Math.round(n2);
             }
             return null;
         }
@@ -1904,7 +1988,7 @@
             if (!SHOW_G_VEIN_THICKNESS_FT) return null;
             var fromCol = getVeinSizeFromCsvNumericColumns(w);
             if (fromCol != null) return fromCol;
-            return lastWaterBearingVeinThicknessFt(w);
+            return gravelVeinThicknessFtFromLithology(w);
         }
         /** DevTools: __cjDebugG('DNR-975') or refno — shows whether lithology parsed and computed g/r. */
         window.__cjDebugG = function(idOrRef) {
@@ -1918,6 +2002,7 @@
                     lithology_json_chars: (w.lithology_json && String(w.lithology_json).length) || 0,
                     intervals: layers ? layers.length : 0,
                     g_ft: getVeinSize(w),
+                    g_from_litho_only: gravelVeinThicknessFtFromLithology(w),
                     r_ft: getDepthToRock(w),
                     bucket: isBucketWell(w)
                 });
