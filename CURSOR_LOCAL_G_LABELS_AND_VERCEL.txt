@@ -1,0 +1,99 @@
+================================================================================
+C&J Well Viewer — g labels, Vercel, and lithology (for local Cursor / laptop)
+================================================================================
+
+WHAT WAS WRONG ON PRODUCTION (c-j-well-viewer.vercel.app)
+--------------------------------------------------------------------------------
+1) statewide_wells_chunk_0.csv.gz (and follow-on chunks) are NOT deployed on
+   Vercel — they 404. The app then loads the small REAL_DNR_WELLS list baked
+   into index.html, which has NO lithology_json column.
+
+2) Without lithology intervals, the map cannot compute "g" (gravel vein
+   thickness) or "r" (depth to rock) from logs — those come from parsing
+   {top, bottom, formation} rows.
+
+3) The /api/dnr-report route was supposed to scrape the official DNR HTML for
+   the Well Log table, but the parser assumed 3 columns (Top | Bottom |
+   Formation). Indiana DNR actually uses 4 columns in many records:
+   (empty spacer) | Top | Bottom | Formation — so every row was rejected and
+   lithology was always [].
+
+
+WHAT WE FIXED IN THE REPO
+--------------------------------------------------------------------------------
+A) api/dnr-report.js
+   - Parses BOTH layouts: 4-column (spacer + top + bottom + formation) and
+     classic 3-column (top + bottom + formation).
+   - After deploy, curl your site:
+     curl -s "https://YOUR-VERCEL-URL/api/dnr-report?refNo=184649"
+     You should see a non-empty "lithology" array (e.g. CLAY, SH).
+
+B) index.html — lazy lithology backfill
+   - When a well has a numeric DNR ref (refno or id like DNR-12345) but NO
+     lithology_json yet, the browser fetches GET /api/dnr-report?refNo=...
+     in small batches (concurrency 4), merges rows into lithology_json,
+     clears the in-memory litho cache for that well, then refreshes the map
+     and the sidebar list.
+   - So on Vercel WITHOUT chunk files, g/r can still appear after a short
+     delay (one request per unique ref in view).
+
+C) Optional chunk CDN — window.CJ_DNR_CHUNK_BASE
+   - If you host statewide_wells_chunk_*.csv.gz elsewhere (S3, R2, etc.),
+     inject BEFORE the main script loads, e.g. in index.html head:
+     <script>window.CJ_DNR_CHUNK_BASE = "https://your-cdn.example.com/wells/";</script>
+   - Base URL should end with / or not — the code normalizes it.
+   - Chunks are still excluded from many deploys due to size; this is the
+     recommended path for full statewide data without hammering DNR per well.
+
+
+WHAT YOU SHOULD DO AFTER GIT PULL (on your laptop)
+--------------------------------------------------------------------------------
+1) Merge / deploy the branch that contains these changes to Vercel so
+   production runs the fixed api/dnr-report.js and index.html.
+
+2) Smoke-test the API (replace host if needed):
+   curl -s "https://c-j-well-viewer.vercel.app/api/dnr-report?refNo=184649"
+
+3) In the browser: hard-refresh the viewer, set a location near wells,
+   wait a few seconds — markers and the "25 closest" list should update
+   with r (and g when the official log has gravel / S&G / etc.).
+
+4) Full dataset locally (optional, best performance):
+   - Run the Python pipeline (see GETTING_STARTED_FULL_DATASET.md,
+     build_statewide_data.py) to produce statewide_wells_chunk_*.csv.gz
+     with lithology_json baked in.
+   - Either deploy those files with the static site OR upload to a CDN and
+     set CJ_DNR_CHUNK_BASE.
+
+
+DEBUGGING IN BROWSER DEVTOOLS
+--------------------------------------------------------------------------------
+- Console: __cjDebugG("DNR-184649") or __cjDebugG(184649)
+  Shows lithology_json length, interval count, g_ft, r_ft, bucket flag.
+
+- If lithology stays empty for a ref: check /api/dnr-report?refNo=... JSON;
+  if lithology is still [] after deploy, that well's DNR page layout may
+  differ — capture HTML or ref number for a follow-up parser tweak.
+
+
+REGRESSION TEST (Node, no server)
+--------------------------------------------------------------------------------
+From repo root:
+  node demo/test_gravel_vein_logic.mjs
+
+This mirrors gravel/rock matching logic for S&G, HS, AS, merged intervals, etc.
+
+
+FILES TO KNOW
+--------------------------------------------------------------------------------
+- index.html          — map UI, lazy backfill, getVeinSize / lithoDepthToRock
+- api/dnr-report.js   — Vercel serverless: fetch DNR HTML → lithology JSON
+- demo/gravel_vein_demo_wells.csv — synthetic CSV for testing g logic
+- demo/test_gravel_vein_logic.mjs — Node regression tests
+- .vercelignore       — *.csv ignored; chunk gz files must be added explicitly
+                        if you want them on Vercel (often too large)
+
+
+================================================================================
+End of file — bump dates in comments if you extend this workflow.
+================================================================================
