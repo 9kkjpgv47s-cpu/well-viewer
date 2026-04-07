@@ -19,6 +19,8 @@ import os
 import re
 import sys
 
+from dnr_csv_input import open_dnr_wells_csv_for_read
+
 DEFAULT_PART = 1000  # refno // PART → filename litho_N.json. Smaller = safer for Vercel file size limits.
 
 
@@ -155,8 +157,13 @@ def main():
     ))
 
     if args.wells_csv and os.path.isfile(args.wells_csv):
-        out_path = args.output or args.wells_csv
-        with open(args.wells_csv, "r", encoding="utf-8") as f:
+        if args.output:
+            out_path = args.output
+        elif args.wells_csv.lower().endswith(".gz"):
+            out_path = args.wells_csv[:-3]
+        else:
+            out_path = args.wells_csv
+        with open_dnr_wells_csv_for_read(args.wells_csv) as f:
             reader = csv.DictReader(f)
             fieldnames = list(reader.fieldnames or [])
             if "lithology_json" not in fieldnames:

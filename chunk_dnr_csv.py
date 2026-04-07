@@ -10,7 +10,7 @@ This script only splits columns already present in the input CSV.
 
 Usage:
   python3 chunk_dnr_csv.py [input.csv]
-Default input: dnr_wells_full.csv (or run after fetch_dnr_wells.py)
+Default input: dnr_wells_full.csv or dnr_wells_full.csv.gz (after fetch or from git)
 
 Output: dnr_wells_chunk_0.csv.gz … (row count per MAX_ROWS_PER_CHUNK)
 """
@@ -20,6 +20,9 @@ import os
 import random
 import sys
 
+from dnr_csv_input import open_dnr_wells_csv_for_read, resolve_dnr_full_wells_csv
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_FILE = "dnr_wells_full.csv"
 CHUNK_PREFIX = "dnr_wells_chunk"
 # Split into 8 chunks (~52k rows each); each .gz stays under 100 MB
@@ -29,13 +32,20 @@ SHUFFLE_SEED = 42
 
 
 def main():
-    input_path = sys.argv[1] if len(sys.argv) > 1 else INPUT_FILE
-    if not os.path.exists(input_path):
-        print(f"Missing {input_path}. Run fetch_dnr_wells.py first or pass another CSV.", file=sys.stderr)
-        sys.exit(1)
+    if len(sys.argv) > 1:
+        input_path = sys.argv[1]
+        if not os.path.isfile(input_path):
+            print(f"Missing {input_path}.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        try:
+            input_path = resolve_dnr_full_wells_csv(SCRIPT_DIR, None)
+        except FileNotFoundError as e:
+            print(f"{e} Run fetch_dnr_wells.py or pass a CSV path.", file=sys.stderr)
+            sys.exit(1)
 
     print(f"Reading {input_path}...")
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open_dnr_wells_csv_for_read(input_path) as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames
         if not fieldnames:

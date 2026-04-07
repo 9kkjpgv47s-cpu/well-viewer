@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Read dnr_wells_full.csv and write a slim CSV (only columns the viewer needs)
+Read dnr_wells_full.csv or dnr_wells_full.csv.gz and write a slim CSV (only columns the viewer needs)
 so the file fits under Vercel's 100 MB limit. Also writes a gzipped version
 for deployment (dnr_wells_slim.csv.gz — use this on Vercel).
 
@@ -12,6 +12,9 @@ import gzip
 import os
 import sys
 
+from dnr_csv_input import open_dnr_wells_csv_for_read, resolve_dnr_full_wells_csv
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_FILE = "dnr_wells_full.csv"
 OUTPUT_CSV = "dnr_wells_slim.csv"
 OUTPUT_GZ = "dnr_wells_slim.csv.gz"
@@ -21,13 +24,15 @@ SLIM_COLUMNS = ["refno", "lat", "lon", "depth", "county", "owner", "report", "lo
 
 
 def main():
-    if not os.path.exists(INPUT_FILE):
-        print(f"Missing {INPUT_FILE}. Run python3 fetch_dnr_wells.py first.", file=sys.stderr)
+    try:
+        input_path = resolve_dnr_full_wells_csv(SCRIPT_DIR, None)
+    except FileNotFoundError as e:
+        print(f"{e}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Reading {INPUT_FILE}...")
+    print(f"Reading {input_path}...")
     rows = []
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+    with open_dnr_wells_csv_for_read(input_path) as f:
         r = csv.DictReader(f)
         for row in r:
             refno = row.get("refno", "")

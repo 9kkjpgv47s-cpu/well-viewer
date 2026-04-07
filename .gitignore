@@ -24,10 +24,8 @@ well-driller-dash-board/
 well-driller-dashboard/
 apps/hub/
 
-# Full export: raw CSV is ~106 MB (over GitHub's 100 MB file cap). The canonical copy in git is
-# dnr_wells_full.csv.gz — same rows as dnr_wells_full.csv after decompressing:
-#   gzip -dk dnr_wells_full.csv.gz
-# Keep the uncompressed file local only so it is not committed by mistake.
+# Full export: raw CSV is ~106 MB (over GitHub's 100 MB file cap). Git has dnr_wells_full.csv.gz;
+# Python ETL reads the .gz directly (no decompress). Optional local .csv from fetch_dnr_wells.py.
 dnr_wells_full.csv
 dnr_wells_slim.csv
 dnr_wells_slim.csv.gz

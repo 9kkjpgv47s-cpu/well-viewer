@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Build statewide well data with well_bottom_elev from dnr_wells_full.csv,
-plus lithology from one or more DNR WellLogs CSV/TXT files.
+Build statewide well data with well_bottom_elev from dnr_wells_full.csv
+or dnr_wells_full.csv.gz (no decompress), plus lithology from one or more DNR WellLogs CSV/TXT files.
 Outputs chunked gzipped CSVs for the web app.
 
 Chunk column `aquifer` is filled from pass-through CSV fields if present, else inferred from
@@ -48,12 +48,13 @@ Modal fields (drill rig + method of testing) in chunks — HTML backfill:
 import csv, json, gzip, os, math, re, sys
 from collections import defaultdict
 
+from dnr_csv_input import open_dnr_wells_csv_for_read, resolve_dnr_full_wells_csv
 from dnr_env_local import ensure_dnr_env_local_loaded
 from gravel_corrector import GravelVeinCorrector
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.environ.get("DNR_OUT_DIR", SCRIPT_DIR)
-FULL_CSV = os.environ.get("DNR_FULL_CSV", os.path.join(OUT_DIR, "dnr_wells_full.csv"))
+FULL_CSV_ENV = os.environ.get("DNR_FULL_CSV")
 PUMP_CSV = os.environ.get("DNR_PUMP_CSV", os.path.join(OUT_DIR, "dnr_pump_rates.csv"))
 CHUNK_SIZE = int(os.environ.get("DNR_CHUNK_SIZE", "50000"))
 # Must match index.html DNR_CHUNK_PREFIX without the trailing underscore (files: {base}_0.csv.gz).
@@ -575,7 +576,8 @@ def append_logs_from_file(path, logs):
 def main():
     ensure_dnr_env_local_loaded()
     print(f"  build_statewide_data.py (enriched chunks): {os.path.abspath(__file__)}")
-    print(f"  DNR_OUT_DIR={OUT_DIR!r}  DNR_FULL_CSV={FULL_CSV!r}")
+    full_csv = resolve_dnr_full_wells_csv(OUT_DIR, FULL_CSV_ENV)
+    print(f"  DNR_OUT_DIR={OUT_DIR!r}  wells_input={full_csv!r}")
     # 1. Load lithology from all discovered log files
     log_paths = discover_log_csv_paths(OUT_DIR)
     print("Loading well lithology logs...")
@@ -621,7 +623,7 @@ def main():
               "pump_rate", "bailer_rate", "vein_size_ft", "rock_start_ft", "gravel_thickness_ft",
               "lithology_json", "lithology_source", "drill_rig_type", "test_method"]
 
-    with open(FULL_CSV, newline="", encoding="utf-8-sig") as f:
+    with open_dnr_wells_csv_for_read(full_csv) as f:
         for row in csv.DictReader(f):
             ref = normalize_ref_key(val(row, "refno"))
             lat = val(row, "lat")
