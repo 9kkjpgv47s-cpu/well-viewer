@@ -49,7 +49,7 @@ def read_litho_rows(path):
         text = raw.decode("utf-8", errors="replace")
     lines = [ln for ln in text.splitlines() if ln.strip()]
     if not lines:
-        return []
+        return [], "\t"
     sample = "\n".join(lines[:50])
     delim = "\t" if sample.count("\t") >= sample.count(",") else ","
     return list(csv.reader(lines, delimiter=delim)), delim
@@ -86,6 +86,53 @@ def detect_columns(rows):
     return 0, 1, 2, 3
 
 
+def load_lithology_from_dnr_file(litho_path, cols=None):
+    """
+    Parse DNR litho.txt (tab export) or similar into intervals per refno.
+    Returns (by_ref, n_wells, n_intervals, delim) where by_ref maps int(refno) ->
+    list of {"top","bottom","formation"} dicts sorted by top depth.
+    """
+    rows, delim = read_litho_rows(litho_path)
+    if not rows:
+        return {}, 0, 0, delim
+    if cols:
+        iref, itop, ibot, iform = [int(x.strip()) for x in cols.split(",")]
+        try:
+            float(str(rows[0][iref]).strip().replace(",", ""))
+            data_rows = rows
+        except (ValueError, IndexError, TypeError):
+            data_rows = rows[1:]
+    else:
+        iref, itop, ibot, iform = detect_columns(rows)
+        first = " ".join(normalize_header(c) for c in rows[0])
+        has_header = ("top" in first and "bottom" in first) or (
+            "formation" in first and not looks_like_refno(rows[0][0] if rows[0] else "")
+        )
+        data_rows = rows[1:] if has_header else rows
+
+    by_ref = {}
+    n_int = 0
+    for row in data_rows:
+        if len(row) <= max(iref, itop, ibot, iform):
+            continue
+        try:
+            ref = int(float(str(row[iref]).strip().replace(",", "")))
+        except (ValueError, TypeError):
+            continue
+        top = str(row[itop]).strip() if itop < len(row) else ""
+        bot = str(row[ibot]).strip() if ibot < len(row) else ""
+        form = str(row[iform]).strip() if iform < len(row) else ""
+        by_ref.setdefault(ref, []).append({"top": top, "bottom": bot, "formation": form})
+        n_int += 1
+
+    for ref in by_ref:
+        by_ref[ref].sort(
+            key=lambda r: float(r["top"] or 0) if r.get("top") not in (None, "") else 0
+        )
+
+    return by_ref, len(by_ref), n_int, delim
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("litho_path")
@@ -100,41 +147,15 @@ def main():
         print("part-size must be > 0", file=sys.stderr)
         sys.exit(2)
 
-    rows, delim = read_litho_rows(args.litho_path)
-    if not rows:
+    by_ref, _nw, n_int, delim = load_lithology_from_dnr_file(args.litho_path, args.cols)
+    if not by_ref:
         print("Empty litho.txt", file=sys.stderr)
         sys.exit(1)
-
+    rows, _ = read_litho_rows(args.litho_path)
     if args.cols:
         iref, itop, ibot, iform = [int(x.strip()) for x in args.cols.split(",")]
-        try:
-            int(float(rows[0][iref]))
-            data_rows = rows
-        except (ValueError, IndexError):
-            data_rows = rows[1:]
     else:
         iref, itop, ibot, iform = detect_columns(rows)
-        first = " ".join(normalize_header(c) for c in rows[0])
-        has_header = ("top" in first and "bottom" in first) or (
-            "formation" in first and not looks_like_refno(rows[0][0] if rows[0] else "")
-        )
-        data_rows = rows[1:] if has_header else rows
-
-    by_ref = {}
-    for row in data_rows:
-        if len(row) <= max(iref, itop, ibot, iform):
-            continue
-        try:
-            ref = int(float(str(row[iref]).strip().replace(",", "")))
-        except (ValueError, TypeError):
-            continue
-        top = str(row[itop]).strip() if itop < len(row) else ""
-        bot = str(row[ibot]).strip() if ibot < len(row) else ""
-        form = str(row[iform]).strip() if iform < len(row) else ""
-        by_ref.setdefault(ref, []).append({"top": top, "bottom": bot, "formation": form})
-
-    for ref in by_ref:
-        by_ref[ref].sort(key=lambda r: float(r["top"] or 0) if r["top"] else 0)
 
     os.makedirs(args.parts_dir, exist_ok=True)
     by_part = {}

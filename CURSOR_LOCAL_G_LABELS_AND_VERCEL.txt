@@ -58,12 +58,20 @@ WHAT YOU SHOULD DO AFTER GIT PULL (on your laptop)
    wait a few seconds — markers and the "25 closest" list should update
    with r (and g when the official log has gravel / S&G / etc.).
 
-4) Full dataset locally (optional, best performance):
-   - Run the Python pipeline (see GETTING_STARTED_FULL_DATASET.md,
-     build_statewide_data.py) to produce statewide_wells_chunk_*.csv.gz
-     with lithology_json baked in.
-   - Either deploy those files with the static site OR upload to a CDN and
-     set CJ_DNR_CHUNK_BASE.
+4) Full dataset + **g labels from chunks** (required for lithology in CSV):
+   Your statewide_wells_chunk_*.csv.gz must have NON-EMPTY lithology_json.
+   Check anytime:
+     python3 verify_chunks_lithology.py
+   If it fails (0 rows with lithology), chunks were built without logs.
+
+   Rebuild with official DNR **litho.txt** (tab file from the database download):
+     - Put litho.txt in the project folder next to dnr_wells_full.csv
+       OR set env DNR_LITHO_TXT=/path/to/litho.txt
+     - Optional: DNR_LITHO_COLS=0,2,3,4 if column detection fails
+     - python3 build_statewide_data.py
+     - python3 verify_chunks_lithology.py   (should exit 0 with a large count)
+
+   Then deploy the new statewide_wells_chunk_*.csv.gz (or R2/S3 + CJ_DNR_CHUNK_BASE).
 
 
 DEBUGGING IN BROWSER DEVTOOLS

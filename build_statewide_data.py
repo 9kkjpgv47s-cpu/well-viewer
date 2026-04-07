@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Build statewide well data with well_bottom_elev from dnr_wells_full.csv,
-plus lithology from one or more DNR WellLogs CSV/TXT files.
-Outputs chunked gzipped CSVs for the web app.
+plus lithology from one or more DNR WellLogs CSV/TXT files OR the official
+DNR litho.txt tab export (same file the database download provides).
 
 Log files:
   • Put surrounding-county exports in:  <this_folder>/well_logs_csv/*.csv  (or .txt tab-delimited)
   • Or set env DNR_LOGS_CSV_PATHS to colon-separated list of files (macOS/Linux use : between paths)
+  • Or place litho.txt in OUT_DIR or set DNR_LITHO_TXT to its path — merges into lithology_json
+    for every matching refno (this is what makes **g** labels work in the chunks).
 """
 import csv, json, gzip, os, math
 from collections import defaultdict
@@ -16,6 +18,8 @@ OUT_DIR = os.environ.get("DNR_OUT_DIR", SCRIPT_DIR)
 FULL_CSV = os.environ.get("DNR_FULL_CSV", os.path.join(OUT_DIR, "dnr_wells_full.csv"))
 PUMP_CSV = os.environ.get("DNR_PUMP_CSV", os.path.join(OUT_DIR, "dnr_pump_rates.csv"))
 CHUNK_SIZE = int(os.environ.get("DNR_CHUNK_SIZE", "50000"))
+LITHO_TXT = os.environ.get("DNR_LITHO_TXT", "").strip()
+LITHO_COLS = os.environ.get("DNR_LITHO_COLS", "").strip()
 
 def safe_float(s):
     try: return float(s)
@@ -54,6 +58,27 @@ def discover_log_csv_paths(out_dir):
             seen.add(rp)
             uniq.append(p)
     return uniq
+
+def merge_litho_txt_into_logs(logs):
+    """Load DNR litho.txt into the same logs dict used by well_logs_csv (ref -> intervals)."""
+    path = LITHO_TXT or os.path.join(OUT_DIR, "litho.txt")
+    if not os.path.isfile(path):
+        return 0
+    try:
+        from merge_litho_into_wells import load_lithology_from_dnr_file
+    except ImportError:
+        print("  WARNING: merge_litho_into_wells.py not found; cannot load litho.txt")
+        return 0
+    cols = LITHO_COLS if LITHO_COLS else None
+    by_ref, n_wells, n_int, _delim = load_lithology_from_dnr_file(path, cols)
+    if not by_ref:
+        return 0
+    for ref, arr in by_ref.items():
+        key = str(ref)
+        logs[key].extend(arr)
+    print(f"  litho.txt ({os.path.basename(path)}): {n_int:,} intervals for {n_wells:,} wells")
+    return n_int
+
 
 def append_logs_from_file(path, logs):
     """Append lithology intervals; supports comma- or tab-separated .csv/.txt."""
@@ -119,6 +144,8 @@ def main():
         n = append_logs_from_file(p, logs)
         total_intervals += n
         print(f"  {os.path.basename(p)}: {n:,} intervals")
+    n_txt = merge_litho_txt_into_logs(logs)
+    total_intervals += n_txt
     for ref in logs:
         logs[ref].sort(key=lambda x: safe_float(x["top"]) or 0)
     print(f"  {len(logs):,} unique wells with lithology ({total_intervals:,} intervals total)")
