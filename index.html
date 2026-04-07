@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-04-litho-g-r-dynamic" />
+    <meta name="cj-build" content="2026-04-07-vercel-chunk-config" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -502,17 +502,53 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-07-vercel-g-backfill';
+        var APP_BUILD_STAMP = '2026-04-07-vercel-chunk-config';
         /**
-         * Gravel “g”: (1) CSV numeric columns, (2) lithology_json on the well row, or (3) lazy-fill from
-         * GET /api/dnr-report?refNo=… when chunks have no lithology (e.g. Vercel demo wells).
+         * Gravel “g”: lithology_json in chunks (rebuild with litho.txt) and/or lazy /api/dnr-report fill.
+         * Chunk base: CJ_DNR_CHUNK_BASE, then GET /api/config (Vercel env DNR_CHUNK_BASE_URL), then same-origin.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
-        try {
-            if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_BASE && String(window.CJ_DNR_CHUNK_BASE).trim()) {
-                DNR_CHUNK_BASE_URL = String(window.CJ_DNR_CHUNK_BASE).trim().replace(/\/?$/, '/');
-            }
-        } catch (eCdn) {}
+
+        /** Detect gzip magic and decompress; handles CDN that serves .gz as octet-stream. */
+        function fetchGzipCsvText(url) {
+            return fetch(url).then(function(res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.arrayBuffer().then(function(ab) {
+                    var bytes = new Uint8Array(ab);
+                    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+                        if (typeof DecompressionStream === 'undefined') {
+                            throw new Error('Browser cannot decompress gzip (need HTTPS + current browser)');
+                        }
+                        return new Response(ab).body.pipeThrough(new DecompressionStream('gzip')).text();
+                    }
+                    return new TextDecoder('utf-8').decode(ab);
+                });
+            });
+        }
+
+        function resolveChunkBaseUrl() {
+            return new Promise(function(resolve) {
+                try {
+                    if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_BASE && String(window.CJ_DNR_CHUNK_BASE).trim()) {
+                        resolve(String(window.CJ_DNR_CHUNK_BASE).trim().replace(/\/?$/, '/'));
+                        return;
+                    }
+                } catch (e0) {}
+                var ctrl = new AbortController();
+                var t = setTimeout(function() { ctrl.abort(); }, 4000);
+                fetch('/api/config', { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
+                    .then(function(r) { return r.ok ? r.json() : {}; })
+                    .then(function(j) {
+                        clearTimeout(t);
+                        var b = (j && j.chunkBaseUrl) ? String(j.chunkBaseUrl).trim() : '';
+                        resolve(b ? b.replace(/\/?$/, '/') : '');
+                    })
+                    .catch(function() {
+                        clearTimeout(t);
+                        resolve('');
+                    });
+            });
+        }
         var elevationViewActive = false;
         var yieldViewActive = false;
 
@@ -770,15 +806,7 @@
                 var url = (DNR_CHUNK_BASE_URL || '') + DNR_CHUNK_PREFIX + index + DNR_CHUNK_SUFFIX;
                 status.textContent = 'Loading chunk ' + (index + 1) + '…';
                 var timeoutMs = 90000;
-                var fetchPromise = fetch(url)
-                    .then(function(res) {
-                        if (!res.ok) throw new Error('no more chunks');
-                        if (typeof DecompressionStream !== 'undefined') {
-                            var stream = res.body.pipeThrough(new DecompressionStream('gzip'));
-                            return new Response(stream).text();
-                        }
-                        return res.text();
-                    });
+                var fetchPromise = fetchGzipCsvText(url);
                 var timeoutPromise = new Promise(function(_, reject) {
                     setTimeout(function() { reject(new Error('timeout')); }, timeoutMs);
                 });
@@ -813,7 +841,12 @@
                         }
                     });
             }
-            fetchChunk(0);
+            status.textContent = 'Resolving data host…';
+            resolveChunkBaseUrl().then(function(base) {
+                DNR_CHUNK_BASE_URL = base;
+                try { console.info('[C&J] statewide chunk base:', base || '(same origin as app)'); } catch (eL) {}
+                fetchChunk(0);
+            });
         }
 
         function setupTrackpadPanZoom() {

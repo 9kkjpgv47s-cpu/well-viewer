@@ -1,0 +1,53 @@
+================================================================================
+Vercel deployment — load statewide wells + g labels
+================================================================================
+
+1) ENVIRONMENT VARIABLE (recommended for chunk hosting)
+--------------------------------------------------------------------------------
+Vercel Dashboard → your project → Settings → Environment Variables
+
+  Name:   DNR_CHUNK_BASE_URL
+  Value:  https://your-public-bucket.example.com/path/
+          (must end with / or not — app normalizes; must allow CORS GET from
+           your Vercel domain if the bucket is on another origin)
+
+Redeploy after saving. The app calls GET /api/config and receives
+{ "chunkBaseUrl": "..." } then fetches:
+  {chunkBaseUrl}statewide_wells_chunk_0.csv.gz, _1, _2, ...
+
+If DNR_CHUNK_BASE_URL is unset, chunks load from the SAME origin as the app
+(e.g. https://c-j-well-viewer.vercel.app/statewide_wells_chunk_0.csv.gz).
+Those files must be in the deployed repo (not ignored by .vercelignore).
+
+
+2) CHUNK FILES ON VERCEL
+--------------------------------------------------------------------------------
+.vercelignore does NOT ignore statewide_wells_chunk_*.csv.gz — they deploy if
+committed. Large deploys may hit Vercel limits; then use R2/S3 + env above.
+
+Rebuild chunks WITH lithology for **g** labels:
+  - Put DNR litho.txt next to dnr_wells_full.csv
+  - python3 build_statewide_data.py
+  - python3 verify_chunks_lithology.py   (must exit 0, non-zero lithology count)
+  - git add statewide_wells_chunk_*.csv.gz && git commit && git push
+
+
+3) SERVERLESS API
+--------------------------------------------------------------------------------
+/api/dnr-report   — DNR HTML → lithology JSON (fixed 4-column Well Log parse)
+/api/config       — exposes DNR_CHUNK_BASE_URL to the browser
+
+vercel.json sets api/*.js memory and maxDuration.
+
+
+4) SMOKE TESTS AFTER DEPLOY
+--------------------------------------------------------------------------------
+  curl -s https://YOUR_DOMAIN.vercel.app/api/config
+  curl -sI https://YOUR_DOMAIN.vercel.app/statewide_wells_chunk_0.csv.gz
+  curl -s "https://YOUR_DOMAIN.vercel.app/api/dnr-report?refNo=184649"
+      → lithology array should not be empty
+
+Browser console should log:
+  [C&J] statewide chunk base: ...
+
+================================================================================

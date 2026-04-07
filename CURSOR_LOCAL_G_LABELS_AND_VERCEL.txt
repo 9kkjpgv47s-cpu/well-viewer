@@ -46,10 +46,16 @@ C) Optional chunk CDN — window.CJ_DNR_CHUNK_BASE
      recommended path for full statewide data without hammering DNR per well.
 
 
+VERCEL (PRIORITY)
+--------------------------------------------------------------------------------
+See VERCEL_SETUP.txt — set DNR_CHUNK_BASE_URL if chunks live on R2/S3, rebuild
+chunks with litho.txt, verify_chunks_lithology.py before deploy.
+
+
 WHAT YOU SHOULD DO AFTER GIT PULL (on your laptop)
 --------------------------------------------------------------------------------
 1) Merge / deploy the branch that contains these changes to Vercel so
-   production runs the fixed api/dnr-report.js and index.html.
+   production runs the fixed api/dnr-report.js, api/config.js, and index.html.
 
 2) Smoke-test the API (replace host if needed):
    curl -s "https://c-j-well-viewer.vercel.app/api/dnr-report?refNo=184649"
