@@ -65,17 +65,39 @@ function parseReportHtml(html) {
     const tds = rowHtml.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi);
     if (!tds || tds.length < 3) continue;
     const cells = tds.map((td) => stripTags(td));
+    let topS;
+    let bottomS;
+    let formation;
+    /* Classic DNR layout: 4 columns — spacer | Top | Bottom | Formation */
+    if (
+      cells.length >= 4 &&
+      /^[\d.]+$/.test((cells[1] || '').replace(/\s/g, '')) &&
+      /^[\d.]+$/.test((cells[2] || '').replace(/\s/g, ''))
+    ) {
+      topS = (cells[1] || '').replace(/\s/g, '');
+      bottomS = (cells[2] || '').replace(/\s/g, '');
+      formation = (cells[3] || '').trim();
+    } else if (
+      cells.length >= 3 &&
+      /^[\d.]+$/.test((cells[0] || '').replace(/\s/g, '')) &&
+      /^[\d.]+$/.test((cells[1] || '').replace(/\s/g, ''))
+    ) {
+      /* 3 columns: Top | Bottom | Formation */
+      topS = (cells[0] || '').replace(/\s/g, '');
+      bottomS = (cells[1] || '').replace(/\s/g, '');
+      formation = (cells[2] || '').trim();
+    } else {
+      continue;
+    }
     const c0 = (cells[0] || '').toLowerCase().replace(/\s/g, '');
-    const c2 = (cells[2] || '').toLowerCase();
-    if (c0 === 'top' || (c0.includes('top') && c2.includes('formation'))) continue;
-    const topS = (cells[0] || '').replace(/\s/g, '');
-    const bottomS = (cells[1] || '').replace(/\s/g, '');
-    const formation = (cells[2] || '').trim();
+    const cHead = (formation || '').toLowerCase();
+    if (c0 === 'top' || /^top$/i.test(topS) || (c0.includes('top') && cHead.includes('formation'))) continue;
     if (!/^[\d.]+$/.test(topS) || !/^[\d.]+$/.test(bottomS)) continue;
     const topNum = parseFloat(topS);
     const bottomNum = parseFloat(bottomS);
     if (isNaN(topNum) || isNaN(bottomNum)) continue;
-    if (formation.length >= 0) out.lithology.push({ top: topS, bottom: bottomS, formation: formation || '—' });
+    if (/^(top|bottom|formation)$/i.test(formation)) continue;
+    out.lithology.push({ top: topS, bottom: bottomS, formation: formation || '—' });
   }
   // Plain text after "Well Log" (some pages put rows as text)
   if (!out.lithology.length && logIdx >= 0) {
@@ -160,4 +182,4 @@ async function handler(req, res) {
 }
 
 export default handler;
-module.exports = handler;
+if (typeof module !== 'undefined' && module.exports) module.exports = handler;

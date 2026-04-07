@@ -498,18 +498,21 @@
 
         // Set to your chunk base URL to avoid deploying chunks to Vercel (e.g. S3, R2, or any CDN).
         // Leave empty to load chunks from the same origin as the app.
+        // Optional: <script>window.CJ_DNR_CHUNK_BASE='https://your-cdn.example.com/wells/';</script> before this bundle
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-04-litho-g-r-dynamic';
+        var APP_BUILD_STAMP = '2026-04-07-vercel-g-backfill';
         /**
-         * Gravel “g” + ft — CSV only, no DNR API for this label:
-         * 1) Optional numeric columns on the row (gravel production thickness in ft).
-         * 2) Else parse intervals from lithology_json — thickest **gravel-bearing** production interval
-         *    (sand-only intervals do not produce a g label; r uses depth-to-rock separately).
-         * getVeinSize / getLithLayers never call fetch(); modal DNR API is unrelated to map g.
+         * Gravel “g”: (1) CSV numeric columns, (2) lithology_json on the well row, or (3) lazy-fill from
+         * GET /api/dnr-report?refNo=… when chunks have no lithology (e.g. Vercel demo wells).
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
+        try {
+            if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_BASE && String(window.CJ_DNR_CHUNK_BASE).trim()) {
+                DNR_CHUNK_BASE_URL = String(window.CJ_DNR_CHUNK_BASE).trim().replace(/\/?$/, '/');
+            }
+        } catch (eCdn) {}
         var elevationViewActive = false;
         var yieldViewActive = false;
 
@@ -1454,6 +1457,7 @@
                 return;
             }
 
+            runLazyLithologyBackfill(listToShow);
             renderRows(userElevationM, lastWellElevationsM && lastWellElevationsM.length === listToShow.length ? lastWellElevationsM : listToShow.map(function() { return null; }));
         }
 
@@ -2072,6 +2076,103 @@
             return yldRanges.indexOf(yieldRange(gpm)) !== -1;
         }
 
+        function refNoFromWell(w) {
+            if (!w) return null;
+            if (w.refno != null && String(w.refno).trim() !== '') {
+                var rs = String(w.refno).replace(/\s/g, '');
+                if (/^\d+$/.test(rs)) return rs;
+            }
+            var id = String(w.id || '');
+            var m = id.match(/DNR-(\d+)/i);
+            if (m) return m[1];
+            if (/^\d+$/.test(id)) return id;
+            return null;
+        }
+
+        function wellNeedsLazyLithology(w) {
+            if (!w) return false;
+            if (getLithLayers(w)) return false;
+            return refNoFromWell(w) != null;
+        }
+
+        var _lazyLithPromiseByRef = {};
+        var _lazyLithFetched = {};
+
+        function fetchDnrReportLithology(refNo) {
+            if (_lazyLithFetched[refNo]) return Promise.resolve(null);
+            if (_lazyLithPromiseByRef[refNo]) return _lazyLithPromiseByRef[refNo];
+            var api = dnrApiUrl(refNo);
+            if (!api) return Promise.resolve(null);
+            _lazyLithPromiseByRef[refNo] = fetch(api, { headers: { 'Accept': 'application/json' } })
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    _lazyLithFetched[refNo] = true;
+                    delete _lazyLithPromiseByRef[refNo];
+                    if (!data || !data.lithology || !Array.isArray(data.lithology) || !data.lithology.length) return null;
+                    return data.lithology;
+                })
+                .catch(function() {
+                    _lazyLithFetched[refNo] = true;
+                    delete _lazyLithPromiseByRef[refNo];
+                    return null;
+                });
+            return _lazyLithPromiseByRef[refNo];
+        }
+
+        function applyLithologyJsonToWell(w, rows) {
+            if (!w || !rows || !rows.length) return;
+            try {
+                w.lithology_json = JSON.stringify(rows);
+                if (w.id) _lithoCache[w.id] = undefined;
+            } catch (eApply) {}
+        }
+
+        /** When statewide chunks are missing (e.g. Vercel), fill lithology from /api/dnr-report so g/r labels work. */
+        function runLazyLithologyBackfill(wellArr) {
+            if (!wellArr || !wellArr.length) return;
+            try {
+                if (window.location.protocol === 'file:') return;
+            } catch (eP) { return; }
+            var refs = [];
+            var seen = {};
+            for (var i = 0; i < wellArr.length; i++) {
+                var ww = wellArr[i];
+                if (!wellNeedsLazyLithology(ww)) continue;
+                var r = refNoFromWell(ww);
+                if (!r || seen[r]) continue;
+                seen[r] = true;
+                refs.push(r);
+            }
+            if (!refs.length) return;
+            var concurrency = 4;
+            var ri = 0;
+            var anyApplied = false;
+            function pump() {
+                if (ri >= refs.length) {
+                    if (anyApplied) {
+                        try { updateWellsList(); } catch (eU) {}
+                        try { refreshMap(); } catch (eR) {}
+                    }
+                    return;
+                }
+                var batch = [];
+                for (var b = 0; b < concurrency && ri < refs.length; b++) batch.push(refs[ri++]);
+                Promise.all(batch.map(function(refNo) {
+                    return fetchDnrReportLithology(refNo).then(function(rows) {
+                        if (!rows || !rows.length) return;
+                        for (var wi = 0; wi < wells.length; wi++) {
+                            var wz = wells[wi];
+                            if (refNoFromWell(wz) === refNo) {
+                                applyLithologyJsonToWell(wz, rows);
+                                anyApplied = true;
+                            }
+                        }
+                    });
+                })).then(pump);
+            }
+            pump();
+        }
+
         function refreshMap() {
             var mode = getActiveMode();
             var showElev = hasElevToggles();
@@ -2195,6 +2296,7 @@
             });
 
             updateWellsList();
+            runLazyLithologyBackfill(filtered);
         }
 
         if (document.readyState === 'loading') {
