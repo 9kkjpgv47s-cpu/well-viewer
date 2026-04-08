@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-10-compact-markers-ui" />
+    <meta name="cj-build" content="2026-04-10-map-well-toggle-button" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -235,7 +235,7 @@
         #typeRock:checked + .toggle-slider { background: #dc2626 !important; }
         #typeBucket:checked + .toggle-slider { background: #f97316 !important; }
         #typeDry:checked + .toggle-slider { background: #111827 !important; }
-        #hideWells:checked + .toggle-slider { background: #ef4444 !important; }
+        #typeEstimated:checked + .toggle-slider { background: #16a34a !important; }
         /* Must live inside .leaflet-container (moved in JS) so bottom = bottom of map, not tall grid cell */
         .leaflet-container .map-bottom-bar {
             position: absolute;
@@ -288,6 +288,15 @@
             max-width: 48px; padding: 0 2px;
         }
         .map-list-size-stack .zoom-btn { width: 34px; height: 30px; font-size: 1rem; }
+        .map-well-toggle-btn {
+            font-size: 0.72rem; font-weight: 700; color: #dc2626; padding: 0.35rem 0.65rem;
+            border-radius: 999px; border: 1px solid #e5e7eb; background: rgba(255,255,255,0.98);
+            cursor: pointer; white-space: nowrap; line-height: 1.2;
+        }
+        .map-well-toggle-btn:hover { background: #fef2f2; }
+        @media (max-width: 640px) {
+            .map-well-toggle-btn { font-size: 0.65rem; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+        }
     </style>
 </head>
 <body class="p-4 max-w-7xl mx-auto">
@@ -388,6 +397,10 @@
                     <label class="toggle-switch"><input type="checkbox" id="typeDry" onchange="refreshMap()"><span class="toggle-slider" style="background:#a1a1aa;"></span></label>
                     <div><div class="toggle-label" style="color:#111827;">&#9679; Dry Hole</div></div>
                 </div>
+                <div class="toggle-wrap" style="padding:0.2rem 0;">
+                    <label class="toggle-switch"><input type="checkbox" id="typeEstimated" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
+                    <div><div class="toggle-label" style="color:#16a34a;">&#9679; Estimated / Unverified Location</div></div>
+                </div>
             </div>
 
             <h3 class="font-bold text-xl mb-1 text-gray-800">Wells on Screen (<span id="wellCount">0</span>)</h3>
@@ -400,10 +413,9 @@
             <div class="map-shell">
                 <div id="map"></div>
                 <div class="map-bottom-bar" role="group" aria-label="Map display options">
-                    <div class="toggle-wrap">
-                        <label class="toggle-switch"><input type="checkbox" id="hideWells" onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
-                        <div><div class="toggle-label" style="color:#dc2626;font-weight:700;">Hide well labels</div></div>
-                    </div>
+                    <button type="button" class="map-well-toggle-btn" id="btnToggleMapWells" onclick="toggleMapWellsHidden()" title="Hide or show markers on the map">
+                        Hide wells on map
+                    </button>
                 </div>
                 <div class="map-list-size-stack" role="group" aria-label="Well sidebar list text size">
                     <span class="map-chrome-caption">Sidebar text</span>
@@ -483,6 +495,8 @@
         let tempMarker = null;
         let locationMarker = null;
         let wellLayer = L.featureGroup();
+        /** When true, map markers are hidden (single map control — no duplicate toggle). */
+        var mapWellsHidden = false;
         let currentFilters = { text: '', minDepth: 0, maxDepth: 9999 };
         let userElevationM = null;
         let lastWellElevationsM = null;
@@ -497,7 +511,7 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-10-compact-markers-ui';
+        var APP_BUILD_STAMP = '2026-04-10-map-well-toggle-button';
         /**
          * Gravel “g”: lithology_json in chunks (rebuild with litho.txt) and/or lazy /api/dnr-report fill.
          * Chunk base: CJ_DNR_CHUNK_BASE, then GET /api/config (Vercel env DNR_CHUNK_BASE_URL), then same-origin.
@@ -547,7 +561,19 @@
         var elevationViewActive = false;
         var yieldViewActive = false;
 
-        /** Move hide-wells + zoom UI into Leaflet's map div so position:absolute bottom aligns to the map, not a tall CSS grid row. */
+        function syncMapWellToggleButton() {
+            var b = document.getElementById('btnToggleMapWells');
+            if (!b) return;
+            b.textContent = mapWellsHidden ? 'Show wells on map' : 'Hide wells on map';
+        }
+
+        function toggleMapWellsHidden() {
+            mapWellsHidden = !mapWellsHidden;
+            syncMapWellToggleButton();
+            refreshMap();
+        }
+
+        /** Move map chrome + zoom UI into Leaflet's map div so position:absolute bottom aligns to the map, not a tall CSS grid row. */
         function attachMapChromeIntoLeaflet() {
             if (!map) return;
             map.whenReady(function() {
@@ -642,7 +668,7 @@
         }
 
         function applyLocationTypeTogglesForSearch() {
-            ['typeUncon', 'typeRock'].forEach(function(id) {
+            ['typeUncon', 'typeRock', 'typeEstimated'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el && !el.checked) el.checked = true;
             });
@@ -661,6 +687,7 @@
             map.on('moveend zoomend', function() { refreshMap(); });
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
+            syncMapWellToggleButton();
             initWellListScaleFromStorage();
             updateWellsList();
             setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); loadFullDnrDataset(); }, 200);
@@ -1962,7 +1989,7 @@
 
         function hasElevToggles() { return checkedIds(['elevBlue','elevGreen','elevOrange','elevRed']).length > 0; }
         function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed']).length > 0; }
-        function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry']).length > 0; }
+        function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry','typeEstimated']).length > 0; }
 
         function getActiveMode() {
             var e = hasElevToggles(), y = hasYieldToggles(), t = hasTypeToggles();
@@ -2009,10 +2036,9 @@
             var showRock = document.getElementById('typeRock') && document.getElementById('typeRock').checked;
             var showBucket = document.getElementById('typeBucket') && document.getElementById('typeBucket').checked;
             var showDry = document.getElementById('typeDry') && document.getElementById('typeDry').checked;
-            /* No UI toggle: estimated / unverified locations always allowed when type filters are on */
-            var showEst = true;
+            var showEst = document.getElementById('typeEstimated') && document.getElementById('typeEstimated').checked;
 
-            if (!showUncon && !showRock && !showBucket && !showDry) return true;
+            if (!showUncon && !showRock && !showBucket && !showDry && !showEst) return true;
 
             var dry = isDryHole(w);
             if (dry) return showDry;
@@ -2213,8 +2239,7 @@
             if (!map) return;
             wellLayer.clearLayers();
 
-            var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
-            if (hideWells) {
+            if (mapWellsHidden) {
                 updateWellsList();
                 return;
             }
