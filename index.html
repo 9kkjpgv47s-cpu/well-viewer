@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-07-vercel-chunk-config" />
+    <meta name="cj-build" content="2026-04-10-compact-markers-ui" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -235,7 +235,6 @@
         #typeRock:checked + .toggle-slider { background: #dc2626 !important; }
         #typeBucket:checked + .toggle-slider { background: #f97316 !important; }
         #typeDry:checked + .toggle-slider { background: #111827 !important; }
-        #typeEstimated:checked + .toggle-slider { background: #16a34a !important; }
         #hideWells:checked + .toggle-slider { background: #ef4444 !important; }
         /* Must live inside .leaflet-container (moved in JS) so bottom = bottom of map, not tall grid cell */
         .leaflet-container .map-bottom-bar {
@@ -264,19 +263,19 @@
         .elev-marker { min-width: 32px; padding: 1px 3px; border-radius: 6px; font-size: 8px; font-weight: 700; text-align: center; color: #fff; line-height: 1.3; white-space: nowrap; border: 1.5px solid rgba(255,255,255,0.8); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
         .combo-marker {
             display: block;
-            border-radius: 4px;
+            border-radius: 3px;
             font-weight: 700;
             text-align: center;
             color: #fff;
-            line-height: 1.15;
+            line-height: 1.12;
             white-space: nowrap;
             border: 1px solid rgba(255,255,255,0.85);
             box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-            overflow: hidden;
+            overflow: visible;
             box-sizing: border-box;
             max-width: none;
         }
-        .combo-marker .cm-row { padding: 0 3px; }
+        .combo-marker .cm-row { padding: 0 2px; }
         .leaflet-container .map-zoom-stack { position: absolute; bottom: 24px; right: 12px; z-index: 1100; }
         .leaflet-container .map-list-size-stack {
             position: absolute; bottom: 24px; right: 56px; z-index: 1100;
@@ -389,10 +388,6 @@
                     <label class="toggle-switch"><input type="checkbox" id="typeDry" onchange="refreshMap()"><span class="toggle-slider" style="background:#a1a1aa;"></span></label>
                     <div><div class="toggle-label" style="color:#111827;">&#9679; Dry Hole</div></div>
                 </div>
-                <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeEstimated" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
-                    <div><div class="toggle-label" style="color:#16a34a;">&#9679; Estimated / Unverified Location</div></div>
-                </div>
             </div>
 
             <h3 class="font-bold text-xl mb-1 text-gray-800">Wells on Screen (<span id="wellCount">0</span>)</h3>
@@ -502,7 +497,7 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-07-vercel-chunk-config';
+        var APP_BUILD_STAMP = '2026-04-10-compact-markers-ui';
         /**
          * Gravel “g”: lithology_json in chunks (rebuild with litho.txt) and/or lazy /api/dnr-report fill.
          * Chunk base: CJ_DNR_CHUNK_BASE, then GET /api/config (Vercel env DNR_CHUNK_BASE_URL), then same-origin.
@@ -647,7 +642,7 @@
         }
 
         function applyLocationTypeTogglesForSearch() {
-            ['typeUncon', 'typeRock', 'typeEstimated'].forEach(function(id) {
+            ['typeUncon', 'typeRock'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el && !el.checked) el.checked = true;
             });
@@ -1967,7 +1962,7 @@
 
         function hasElevToggles() { return checkedIds(['elevBlue','elevGreen','elevOrange','elevRed']).length > 0; }
         function hasYieldToggles() { return checkedIds(['yieldBlue','yieldGreen','yieldOrange','yieldRed']).length > 0; }
-        function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry','typeEstimated']).length > 0; }
+        function hasTypeToggles() { return checkedIds(['typeUncon','typeRock','typeBucket','typeDry']).length > 0; }
 
         function getActiveMode() {
             var e = hasElevToggles(), y = hasYieldToggles(), t = hasTypeToggles();
@@ -2014,9 +2009,10 @@
             var showRock = document.getElementById('typeRock') && document.getElementById('typeRock').checked;
             var showBucket = document.getElementById('typeBucket') && document.getElementById('typeBucket').checked;
             var showDry = document.getElementById('typeDry') && document.getElementById('typeDry').checked;
-            var showEst = document.getElementById('typeEstimated') && document.getElementById('typeEstimated').checked;
+            /* No UI toggle: estimated / unverified locations always allowed when type filters are on */
+            var showEst = true;
 
-            if (!showUncon && !showRock && !showBucket && !showDry && !showEst) return true;
+            if (!showUncon && !showRock && !showBucket && !showDry) return true;
 
             var dry = isDryHole(w);
             if (dry) return showDry;
@@ -2260,8 +2256,9 @@
             }
 
             var zoom = map.getZoom();
-            var zScale = Math.max(0.45, Math.min(1.45, 0.32 + (zoom - 7) * 0.09));
-            var comboFs = Math.max(4.5, Math.round(6 * zScale * 10) / 10);
+            var zScale = Math.max(0.42, Math.min(1.35, 0.28 + (zoom - 7) * 0.085));
+            /* Compact markers: slightly smaller type, extra width margin so labels are not clipped */
+            var comboFs = Math.max(3.9, Math.round(5.4 * zScale * 10) / 10);
 
             filtered.forEach(function(w) {
                 var latNum = Number(w.lat), lonNum = Number(w.lon);
@@ -2312,12 +2309,12 @@
                     var stripped = rows[ri].replace(/<[^>]+>/g, '');
                     if (stripped.length > longestText) longestText = stripped.length;
                 }
-                var charPx = comboFs * 0.5;
-                var innerW = Math.max(24, Math.ceil(longestText * charPx + 6));
-                var rowH = Math.max(9, Math.round(12 * zScale));
+                var charPx = comboFs * 0.52;
+                var innerW = Math.max(22, Math.ceil(longestText * charPx + 8));
+                var rowH = Math.max(8, Math.round(10 * zScale));
                 var effRows = rows.length || 1;
-                var innerH = Math.max(Math.round(10 * zScale), effRows * rowH);
-                var padB = 3;
+                var innerH = Math.max(Math.round(9 * zScale), effRows * rowH);
+                var padB = 2;
                 var iconW = innerW + padB * 2;
                 var iconH = innerH + padB * 2;
                 var markerHtml = '<div class="combo-marker" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px">' + rows.join('') + '</div>';
