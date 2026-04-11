@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-06-load-bg-map-gated" />
+    <meta name="cj-build" content="2026-04-11-cj-probe-wait-papa" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -487,6 +487,16 @@
     <script>
         let selectedWellForLog = null;
         let wells = [];
+        /* Expose for Playwright / scripts/viewer_probe.py (window.wells.length, DNR-991020, etc.). */
+        if (typeof window !== 'undefined') {
+            try {
+                Object.defineProperty(window, 'wells', {
+                    get: function () { return wells; },
+                    enumerable: true,
+                    configurable: true
+                });
+            } catch (eW) {}
+        }
         function resolveWellForDisplay(id) {
             return wells.find(function(well) { return well.id === id; }) || null;
         }
@@ -535,6 +545,17 @@
         function maybeAutoStartDnrChunksOnInit() {
             try {
                 var u = new URL(window.location.href);
+                /* Fixture probe must not run loadFullDnrDataset before PapaParse (CDN) exists — else we keep demo wells and g-label fixtures time out. */
+                if (u.searchParams.get('cj_probe') === '1') {
+                    (function cjProbeWaitPapaThenLoad() {
+                        if (typeof Papa !== 'undefined') {
+                            ensureFullDnrDatasetLoaded();
+                            return;
+                        }
+                        setTimeout(cjProbeWaitPapaThenLoad, 40);
+                    })();
+                    return;
+                }
                 if (u.searchParams.get('cj_litho_g') === '1' || window.CJ_LITHO_G_URL === true) {
                     /* Load data + debug panel only — do not auto-check “Show wells on map” (keeps map light). */
                     ensureFullDnrDatasetLoaded();
@@ -634,7 +655,7 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-06-load-bg-map-gated';
+        var APP_BUILD_STAMP = '2026-04-11-cj-probe-wait-papa';
         /**
          * Gravel “g” + ft — lithology-only policy (2026-04):
          * Map/list g uses WELL_G_FT_BY_REF (manual) then sand/gravel/water-bearing thickness parsed only from
