@@ -67,17 +67,28 @@ def _details_url(ref: str) -> str:
 def _fetch_html(ref: str, out_dir: str, *, debug_first: bool) -> str:
     ensure_dnr_env_local_loaded()
     url = _details_url(ref)
+    chrome_ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (compatible; DNR-Well-Viewer-ETL/1.0; +local build_statewide_data)"
-        ),
-        "Accept": "text/html,application/xhtml+xml",
+        # Mirror api/dnr-report.js fetch profile (browser-like, not custom bot UA).
+        "User-Agent": chrome_ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        # Prefer plain text payload to avoid brotli/encoding surprises in urllib.
+        "Accept-Encoding": "identity",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
     }
     if _env_truthy("DNR_HTTP_MINIMAL_HEADERS"):
         headers = {
-            "User-Agent": headers["User-Agent"],
+            "User-Agent": chrome_ua,
             "Accept": "text/html,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "identity",
         }
     cookie = (os.environ.get("DNR_HTTP_COOKIE") or "").strip()
     if cookie:
@@ -87,6 +98,16 @@ def _fetch_html(ref: str, out_dir: str, *, debug_first: bool) -> str:
         with urllib.request.urlopen(req, timeout=90) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as e:
+        if debug_first and out_dir:
+            try:
+                raw_err = e.read()
+                txt_err = raw_err.decode("utf-8", errors="replace")
+                dbg = os.path.join(out_dir, "dnr_debug_first_fetch.http_error.html")
+                if not os.path.isfile(dbg):
+                    with open(dbg, "w", encoding="utf-8", errors="replace") as f:
+                        f.write(txt_err)
+            except Exception:
+                pass
         return ""
     except urllib.error.URLError:
         return ""
@@ -156,23 +177,31 @@ def parse_report_html(html: str) -> dict[str, Any]:
         if len(tds) < 3:
             continue
         cells = [_strip_tags(t) for t in tds]
-        c0 = re.sub(r"\s", "", (cells[0] or "").lower())
-        c2 = (cells[2] or "").lower()
-        if c0 == "top" or ("top" in c0 and "formation" in c2):
+        row_text = " ".join(cells).lower()
+        if "top" in row_text and "bottom" in row_text and "formation" in row_text:
             continue
-        top_s = re.sub(r"\s", "", cells[0] or "")
-        bottom_s = re.sub(r"\s", "", cells[1] or "")
-        formation = (cells[2] or "").strip()
-        if not re.match(r"^[\d.]+$", top_s) or not re.match(r"^[\d.]+$", bottom_s):
+        # DNR pages often include a blank leading column before top/bottom.
+        # Find first adjacent numeric pair anywhere in the row.
+        pair_i = None
+        for i in range(0, len(cells) - 1):
+            a = re.sub(r"\s", "", cells[i] or "")
+            b = re.sub(r"\s", "", cells[i + 1] or "")
+            if re.match(r"^[\d.]+$", a) and re.match(r"^[\d.]+$", b):
+                pair_i = i
+                break
+        if pair_i is None:
             continue
-        try:
-            top_num = float(top_s)
-            bottom_num = float(bottom_s)
-        except ValueError:
-            continue
-        if formation.lower() in ("top", "bottom", "formation"):
-            continue
-        litho.append({"top": top_s, "bottom": bottom_s, "formation": formation or "—"})
+        top_s = re.sub(r"\s", "", cells[pair_i] or "")
+        bottom_s = re.sub(r"\s", "", cells[pair_i + 1] or "")
+        formation = ""
+        for j in range(pair_i + 2, len(cells)):
+            c = (cells[j] or "").strip()
+            if c:
+                formation = c
+                break
+        if not formation:
+            formation = "—"
+        litho.append({"top": top_s, "bottom": bottom_s, "formation": formation})
 
     if not litho:
         block = re.sub(r"<script[\s\S]*?</script>", " ", slice_html, flags=re.I)
