@@ -3,7 +3,7 @@
 ## Easiest local path (after `git clone`)
 
 1. Optional once on Mac (only if you use Git LFS): `./setup.sh` or `INSTALL_GIT_LFS=1 ./setup.sh` (no Homebrew).
-2. Rebuild chunks: `python3 build_statewide_data.py` — reads **`dnr_wells_full.csv.gz`** from the repo directly (no `gzip`, no LFS required for the dataset).
+2. Rebuild chunks: `python3 build_statewide_data.py` — reads **`dnr_wells_full.csv.gz`** from the repo directly (no `gzip`, no LFS required for the dataset). Optional wrapper: `./run_dnr_pipeline_local.sh` (set `RUN_HTML_BACKFILL=1` for the HTML lithology pass; otherwise one WellLogs-only rebuild).
 3. Serve: `python3 -m http.server 8080` and open `index.html`.
 
 Static Indiana DNR map (`index.html`) and Python ETL that produces `dnr_wells_chunk_*.csv.gz`. **Vercel:** commit **`dnr_wells_chunk_*.csv.gz` in the repo root** next to `index.html` (same pattern as `statewide_wells_chunk_*.csv.gz`). A dedicated `dnr-chunks/` folder returned **404** on production while root-level `.csv.gz` files were served. Do **not** use a root **`public/`** folder for chunks only: with the “Other” preset, Vercel treats `public/` as the *only* static output directory, so root `index.html` would not deploy.

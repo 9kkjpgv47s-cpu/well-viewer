@@ -4,7 +4,7 @@ Canonical data rebuild for the well viewer: merge WellLogs + enrich vein columns
 
 Output files match the default viewer setting DNR_CHUNK_PREFIX = 'dnr_wells_chunk_'.
 Run from the repo root after placing logs under well_logs_csv/, or set DNR_LOGS_CSV_PATHS to use only those files.
-Before a long HTML backfill, run ./dnr_reliability_preflight.sh (or python3 debug_dnr_html.py --preflight).
+Before a long HTML backfill, run ./run_dnr_pipeline_local.sh (step 1) or python3 debug_dnr_html.py when present.
 
 Usage:
   python3 rebuild_viewer_data.py
