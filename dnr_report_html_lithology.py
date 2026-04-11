@@ -256,9 +256,15 @@ def fill_rows_from_dnr_html(
 
     nh = nph = ncap = nmeta = 0
     http_count = 0
+    cache_hits = 0
     missing = [r for r in out_rows if not str(r.get("lithology_json") or "").strip()]
     total_missing = len(missing)
     processed = 0
+    print(
+        f"  HTML lithology cache: {len(cache):,} ref key(s) on disk; "
+        f"DNR_HTML_LITHO_REFRESH={'1 (refetch all)' if refresh else '0 (reuse cache)'}",
+        flush=True,
+    )
 
     def persist() -> None:
         try:
@@ -276,7 +282,7 @@ def fill_rows_from_dnr_html(
         processed += 1
         if processed % progress == 0 or processed == 1:
             print(
-                f"    … {processed:,}/{total_missing:,} HTTP={http_count:,} "
+                f"    … {processed:,}/{total_missing:,} HTTP={http_count:,} cache_hit≈{cache_hits:,} "
                 f"log_table≈{nh:,} placeholder≈{nph:,} meta_only≈{nmeta:,}",
                 flush=True,
             )
@@ -302,6 +308,7 @@ def fill_rows_from_dnr_html(
             cache[key] = {"parsed": parsed, "fetched_at": int(time.time())}
             persist()
         else:
+            cache_hits += 1
             parsed = entry.get("parsed") or {}
 
         litho = parsed.get("lithology") or []
@@ -321,6 +328,20 @@ def fill_rows_from_dnr_html(
             nph += 1
 
     persist()
+    print(
+        f"  HTML lithology fetch summary: new_HTTP={http_count:,} cache_hits={cache_hits:,} "
+        f"(log_table={nh:,} placeholder={nph:,} meta_only={nmeta:,} capped={ncap:,})",
+        flush=True,
+    )
+    if nh == 0 and total_missing > 500 and cache_hits > total_missing * 0.9 and http_count < max(50, total_missing // 100):
+        print(
+            "  WARNING: Almost all rows used cache but zero Well Log tables parsed. "
+            "Your dnr_html_litho_cache.json likely stores WAF/empty/error pages from an earlier run.\n"
+            "  Fix: mv dnr_html_litho_cache.json dnr_html_litho_cache.json.bak  then re-run with "
+            "DNR_HTTP_COOKIE (browser Cookie for secure.in.gov), or DNR_HTML_LITHO_REFRESH=1 once "
+            "after fixing network/cookie; see build_statewide_data.py header.",
+            flush=True,
+        )
     return nh, nph, ncap, nmeta
 
 
