@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-10-map-well-toggle-button" />
+    <meta name="cj-build" content="2026-05-08-map-hide-wells-checkbox" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -236,6 +236,7 @@
         #typeBucket:checked + .toggle-slider { background: #f97316 !important; }
         #typeDry:checked + .toggle-slider { background: #111827 !important; }
         #typeEstimated:checked + .toggle-slider { background: #16a34a !important; }
+        #hideMapWells:checked + .toggle-slider { background: #dc2626 !important; }
         /* Must live inside .leaflet-container (moved in JS) so bottom = bottom of map, not tall grid cell */
         .leaflet-container .map-bottom-bar {
             position: absolute;
@@ -288,15 +289,6 @@
             max-width: 48px; padding: 0 2px;
         }
         .map-list-size-stack .zoom-btn { width: 34px; height: 30px; font-size: 1rem; }
-        .map-well-toggle-btn {
-            font-size: 0.72rem; font-weight: 700; color: #dc2626; padding: 0.35rem 0.65rem;
-            border-radius: 999px; border: 1px solid #e5e7eb; background: rgba(255,255,255,0.98);
-            cursor: pointer; white-space: nowrap; line-height: 1.2;
-        }
-        .map-well-toggle-btn:hover { background: #fef2f2; }
-        @media (max-width: 640px) {
-            .map-well-toggle-btn { font-size: 0.65rem; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
-        }
     </style>
 </head>
 <body class="p-4 max-w-7xl mx-auto">
@@ -413,9 +405,13 @@
             <div class="map-shell">
                 <div id="map"></div>
                 <div class="map-bottom-bar" role="group" aria-label="Map display options">
-                    <button type="button" class="map-well-toggle-btn" id="btnToggleMapWells" onclick="toggleMapWellsHidden()" title="Hide or show markers on the map">
-                        Hide wells on map
-                    </button>
+                    <div class="toggle-wrap">
+                        <label class="toggle-switch" title="When on, well markers are hidden from the map">
+                            <input type="checkbox" id="hideMapWells" onchange="onHideMapWellsChange()" aria-label="Hide wells on map">
+                            <span class="toggle-slider" style="background:#fca5a5;"></span>
+                        </label>
+                        <div><div class="toggle-label">Hide wells on map</div></div>
+                    </div>
                 </div>
                 <div class="map-list-size-stack" role="group" aria-label="Well sidebar list text size">
                     <span class="map-chrome-caption">Sidebar text</span>
@@ -495,7 +491,7 @@
         let tempMarker = null;
         let locationMarker = null;
         let wellLayer = L.featureGroup();
-        /** When true, map markers are hidden (single map control — no duplicate toggle). */
+        /** When true, map markers are hidden (checkbox label stays fixed: Hide wells on map). */
         var mapWellsHidden = false;
         let currentFilters = { text: '', minDepth: 0, maxDepth: 9999 };
         let userElevationM = null;
@@ -511,7 +507,7 @@
         var DNR_CHUNK_BASE_URL = '';
         var DNR_CHUNK_PREFIX = 'statewide_wells_chunk_';
         var DNR_CHUNK_SUFFIX = '.csv.gz';
-        var APP_BUILD_STAMP = '2026-04-10-map-well-toggle-button';
+        var APP_BUILD_STAMP = '2026-05-08-map-hide-wells-checkbox';
         /**
          * Gravel “g”: lithology_json in chunks (rebuild with litho.txt) and/or lazy /api/dnr-report fill.
          * Chunk base: CJ_DNR_CHUNK_BASE, then GET /api/config (Vercel env DNR_CHUNK_BASE_URL), then same-origin.
@@ -561,15 +557,15 @@
         var elevationViewActive = false;
         var yieldViewActive = false;
 
-        function syncMapWellToggleButton() {
-            var b = document.getElementById('btnToggleMapWells');
-            if (!b) return;
-            b.textContent = mapWellsHidden ? 'Show wells on map' : 'Hide wells on map';
+        function syncHideMapWellsCheckbox() {
+            var el = document.getElementById('hideMapWells');
+            if (!el) return;
+            el.checked = mapWellsHidden;
         }
 
-        function toggleMapWellsHidden() {
-            mapWellsHidden = !mapWellsHidden;
-            syncMapWellToggleButton();
+        function onHideMapWellsChange() {
+            var el = document.getElementById('hideMapWells');
+            mapWellsHidden = !!(el && el.checked);
             refreshMap();
         }
 
@@ -687,7 +683,7 @@
             map.on('moveend zoomend', function() { refreshMap(); });
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
-            syncMapWellToggleButton();
+            syncHideMapWellsCheckbox();
             initWellListScaleFromStorage();
             updateWellsList();
             setTimeout(function() { if (map) map.invalidateSize(); setupTrackpadPanZoom(); loadFullDnrDataset(); }, 200);
