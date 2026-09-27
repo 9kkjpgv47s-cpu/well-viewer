@@ -1,0 +1,175 @@
+{
+  "layer_counts_by_category": {
+    "mixed": 706658,
+    "unconsolidated": 871501,
+    "overburden": 96015,
+    "rock": 332677,
+    "ignore": 15797,
+    "unknown": 69061
+  },
+  "exact_entries": 4282,
+  "unknown_formations_ge_50_layers": 187,
+  "top_unknown": [
+    {
+      "layers": 4302,
+      "formation": "MUD"
+    },
+    {
+      "layers": 1414,
+      "formation": "GRAY MUD"
+    },
+    {
+      "layers": 1214,
+      "formation": "BLUE MUD"
+    },
+    {
+      "layers": 886,
+      "formation": "GRAY HARD PAN"
+    },
+    {
+      "layers": 608,
+      "formation": "BS"
+    },
+    {
+      "layers": 579,
+      "formation": "BOULDER"
+    },
+    {
+      "layers": 547,
+      "formation": "FIRECLAY"
+    },
+    {
+      "layers": 507,
+      "formation": "SHELL"
+    },
+    {
+      "layers": 505,
+      "formation": "MARROW"
+    },
+    {
+      "layers": 455,
+      "formation": "RED MUD"
+    },
+    {
+      "layers": 451,
+      "formation": "ROCKS"
+    },
+    {
+      "layers": 450,
+      "formation": "MARL"
+    },
+    {
+      "layers": 440,
+      "formation": "BOULDERS"
+    },
+    {
+      "layers": 435,
+      "formation": "QUICKSAND"
+    },
+    {
+      "layers": 421,
+      "formation": "G & S"
+    },
+    {
+      "layers": 417,
+      "formation": "BLACK MARROW"
+    },
+    {
+      "layers": 401,
+      "formation": "S/G"
+    },
+    {
+      "layers": 396,
+      "formation": "CAVE"
+    },
+    {
+      "layers": 374,
+      "formation": "BLK DIRT"
+    },
+    {
+      "layers": 372,
+      "formation": "TRENTON"
+    },
+    {
+      "layers": 372,
+      "formation": "BLUESTONE"
+    },
+    {
+      "layers": 370,
+      "formation": "BLACK MUD"
+    },
+    {
+      "layers": 369,
+      "formation": "SANDY MUD"
+    },
+    {
+      "layers": 366,
+      "formation": "YEL MUD"
+    },
+    {
+      "layers": 365,
+      "formation": "SURFACE DIRT"
+    },
+    {
+      "layers": 359,
+      "formation": "WS"
+    },
+    {
+      "layers": 344,
+      "formation": "SANDY"
+    },
+    {
+      "layers": 339,
+      "formation": "ABOVE GRADE"
+    },
+    {
+      "layers": 328,
+      "formation": "BLACK TOP SOIL"
+    },
+    {
+      "layers": 315,
+      "formation": "GRAY PAN"
+    },
+    {
+      "layers": 303,
+      "formation": "GREY MUD"
+    },
+    {
+      "layers": 295,
+      "formation": "GRAY W/S/G"
+    },
+    {
+      "layers": 291,
+      "formation": "SANDY SOIL"
+    },
+    {
+      "layers": 288,
+      "formation": "OLD WELL"
+    },
+    {
+      "layers": 271,
+      "formation": "SANDY TOP SOIL"
+    },
+    {
+      "layers": 254,
+      "formation": "MUD SEAM"
+    },
+    {
+      "layers": 254,
+      "formation": "GRAY"
+    },
+    {
+      "layers": 237,
+      "formation": "BLACK SOIL"
+    },
+    {
+      "layers": 233,
+      "formation": "GRAVLE"
+    },
+    {
+      "layers": 233,
+      "formation": "BLACK TOPSOIL"
+    }
+  ],
+  "lexicon_path": "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo/lithology_v2/formation_lexicon.json"
+}

@@ -7,18 +7,22 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-04-11-cj-probe-wait-papa" />
+    <meta name="cj-build" content="2026-07-23-viewer-parity" />
     <title>C&J Well co — Well Viewer</title>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="manifest" href="manifest.json">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- ?cj_probe=1 → fixtures/chunks/; ?cj_litho_g=1 → g debug panel (map markers still gated). Full DNR auto-loads in background unless CJ_DEFER_DNR_CHUNK_LOAD = true. Map dots: “Show wells on map” OR location/address/coords (searchCenter). -->
+    <script src="vendor/leaflet.js"></script>
+    <link rel="stylesheet" href="vendor/leaflet.css" />
+    <link rel="stylesheet" href="vendor/MarkerCluster.css" />
+    <link rel="stylesheet" href="vendor/MarkerCluster.Default.css" />
+    <script src="vendor/leaflet.markercluster.js"></script>
+    <script src="vendor/papaparse.min.js"></script>
+    <!-- Dual-label + construction classify (v3). Revert: ?classify=v1 -->
+    <script src="archive/classify-v1-viewer.js"></script>
+    <script src="formation-class-v3.js"></script>
+    <script src="well-tag-logic.js"></script>
+    <!-- ?cj_probe=1 → fixtures/chunks/; ?cj_litho_g=1 → g debug panel. Full DNR auto-loads in background unless CJ_DEFER_DNR_CHUNK_LOAD = true. -->
     <script>
     (function () {
         try {
@@ -50,7 +54,16 @@
         .leaflet-marker-icon.well-dot.leaflet-div-icon {
             overflow: visible !important;
         }
-        .well-marker { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+        .well-marker { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); box-sizing: border-box; }
+        /* Estimated (green-fill) dots: minimal 1px type ring — blue gravel/uncon, red rock */
+        .well-marker.vj-est-rock {
+            border: 1px solid #dc2626 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+        .well-marker.vj-est-gravel {
+            border: 1px solid #2563eb !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
         .well-depth-label { font-size: 9px; font-weight: 700; color: #111827; text-shadow: 0 0 2px #ffffff, 0 0 3px #ffffff; line-height: 1; }
         /* Layout (replaces Tailwind) */
         .p-4 { padding: 1rem; }
@@ -291,7 +304,27 @@
             box-sizing: border-box;
             max-width: none;
         }
+        /* Unverified green boxes: minimal 1px type ring (v4 — fill size unchanged) */
+        .combo-marker.vj-est-rock,
+        .well-marker.vj-est-rock {
+            border: 1px solid #dc2626 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+        .combo-marker.vj-est-gravel,
+        .well-marker.vj-est-gravel {
+            border: 1px solid #2563eb !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+        .combo-marker.vj-est-sand,
+        .well-marker.vj-est-sand {
+            border: 1px solid #eab308 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
         .combo-marker .cm-row { padding: 2px 5px; }
+        /* List chips: R red / G blue / S yellow (hub single-label standard) */
+        .cj-chip-r { color: #dc2626; font-weight: 800; }
+        .cj-chip-g { color: #2563eb; font-weight: 800; }
+        .cj-chip-s { color: #ca8a04; font-weight: 800; }
         .leaflet-container .map-zoom-stack { position: absolute; bottom: 24px; right: 12px; z-index: 1100; }
         #modalFooter { flex-wrap: wrap; }
         #modalFooter button { flex: 1 1 140px !important; }
@@ -310,7 +343,7 @@
         <span class="link-tip">Still no “Open in Safari”? Ask the sender to upload this file to iCloud Drive, Google Drive, or Dropbox and send you the <strong>link</strong> — open the link in Safari to get the map.</span>
     </div>
     <div id="loadingDnrPanel" class="p-4 mb-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-center">
-        <strong>Loading well data…</strong> <span id="loadingDnrStatus">DNR chunks load in the background. Map markers stay off until you use “Show wells on map” or 📍 / address / coordinates.</span>
+        <strong>Loading well data…</strong> <span id="loadingDnrStatus">DNR chunks load in the background. Use 📍 / address / coordinates to focus the map.</span>
     </div>
     <div id="loadFailedPanel" hidden aria-hidden="true">
         <h3>Map didn’t load</h3>
@@ -411,10 +444,6 @@
             <div class="map-shell">
                 <div id="map"></div>
                 <div class="map-bottom-bar" role="group" aria-label="Map display options">
-                    <div class="toggle-wrap">
-                        <label class="toggle-switch"><input type="checkbox" id="showMapWells" onchange="onShowMapWellsChange()"><span class="toggle-slider" style="background:#34d399;"></span></label>
-                        <div><div class="toggle-label" style="color:#047857;font-weight:700;">Show wells on map</div></div>
-                    </div>
                     <div class="toggle-wrap">
                         <label class="toggle-switch"><input type="checkbox" id="hideWells" onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
                         <div><div class="toggle-label" style="color:#dc2626;font-weight:700;">Hide well labels</div></div>
@@ -523,7 +552,7 @@
             var status = document.getElementById('loadingDnrStatus');
             var strong = panel ? panel.querySelector('strong') : null;
             if (strong) strong.textContent = 'Loading well data in the background…';
-            if (status) status.textContent = 'Fetching DNR chunks (map stays light — turn on “Show wells on map” or use 📍 / address / coordinates to plot wells).';
+            if (status) status.textContent = 'Fetching DNR chunks (map stays light). Use 📍 / address / coordinates to focus wells near your point.';
             if (panel) {
                 panel.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-800');
                 panel.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-700');
@@ -535,7 +564,7 @@
             var status = document.getElementById('loadingDnrStatus');
             var strong = panel ? panel.querySelector('strong') : null;
             if (strong) strong.textContent = 'DNR load is deferred';
-            if (status) status.textContent = 'Set window.CJ_DEFER_DNR_CHUNK_LOAD = false (or remove it) to load on open. When deferred, turn on “Show wells on map” or use 📍 / address / coordinates to start loading.';
+            if (status) status.textContent = 'Set window.CJ_DEFER_DNR_CHUNK_LOAD = false (or remove it) to load on open. When deferred, use 📍 / address / coordinates to start loading.';
             if (panel) {
                 panel.classList.remove('bg-emerald-100', 'border-emerald-300', 'text-emerald-800');
                 panel.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-700');
@@ -557,7 +586,7 @@
                     return;
                 }
                 if (u.searchParams.get('cj_litho_g') === '1' || window.CJ_LITHO_G_URL === true) {
-                    /* Load data + debug panel only — do not auto-check “Show wells on map” (keeps map light). */
+                    /* Load data + debug panel only (keeps map light). */
                     ensureFullDnrDatasetLoaded();
                     return;
                 }
@@ -575,28 +604,11 @@
             }
             ensureFullDnrDatasetLoaded();
         }
-        /** Wells on map + list: location/search pin, or explicit “Show wells on map” (unless Hide well labels). */
+        /** Wells on map + list: always on unless Hide well labels is enabled. */
         function userRequestedWellMarkers() {
             var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
             if (hideWells) return false;
-            if (searchCenter) return true;
-            var smw = document.getElementById('showMapWells');
-            return !!(smw && smw.checked);
-        }
-        function onShowMapWellsChange() {
-            var sm = document.getElementById('showMapWells');
-            var on = sm && sm.checked;
-            if (on) {
-                ensureFullDnrDatasetLoaded();
-            }
-            refreshMap();
-            if (on) {
-                setTimeout(function() {
-                    if (typeof cjFitMapToWellsIfNoneVisible === 'function') cjFitMapToWellsIfNoneVisible();
-                    updateWellsList();
-                    if (typeof refreshMap === 'function') refreshMap();
-                }, 50);
-            }
+            return true;
         }
         /** Makes combo-marker + depth/g-r tag text bigger/smaller (map +/− is separate Leaflet control). */
         var markerLabelScale = 1;
@@ -655,13 +667,12 @@
          * window.CJ_DISABLE_MODAL_DNR_API is true. file:// has no API unless you set window.CJ_DNR_REPORT_API.
          */
         var CJ_STATIC_DEPLOY = (typeof window !== 'undefined' && typeof window.CJ_STATIC_DEPLOY === 'boolean') ? window.CJ_STATIC_DEPLOY : true;
-        var APP_BUILD_STAMP = '2026-04-11-cj-probe-wait-papa';
+        var APP_BUILD_STAMP = '2026-07-23-viewer-parity';
         /**
-         * Gravel “g” + ft — lithology-only policy (2026-04):
-         * Map/list g uses WELL_G_FT_BY_REF (manual) then sand/gravel/water-bearing thickness parsed only from
-         * lithology_json (and other lithology-shaped columns on the CSV row). Never vein_size_ft, rock_start_ft,
-         * depth_bedrock drift, supplemental alias columns, or screen_length (screen ≠ aquifer thickness).
-         * getProductionVeinSizeFtFromCsv remains for debug/QA probes only — not used for g display.
+         * Gravel “g” + ft policy (2026-04):
+         * Map/list g uses WELL_G_FT_BY_REF (manual) then lithology-derived thickness.
+         * If lithology-derived g appears materially undersized, reconcile with production vein columns
+         * (vein_size_ft / gravel_thickness_ft) when they pass depth sanity/plausibility checks.
          * isUnconsolidatedWell / r tags unchanged.
          */
         var SHOW_G_VEIN_THICKNESS_FT = true;
@@ -757,6 +768,138 @@
             return { lat: lat * (180 / Math.PI), lon: lonOrigin + lon };
         }
 
+        function normalizeWellToken(v) {
+            if (v == null) return '';
+            return String(v).trim();
+        }
+
+        function normalizeWellAlias(v) {
+            var t = normalizeWellToken(v).toUpperCase();
+            if (!t) return '';
+            return t.replace(/[^A-Z0-9]+/g, '');
+        }
+
+        function normalizeWellDigits(v) {
+            var t = normalizeWellToken(v).replace(/[^\d]/g, '');
+            if (!t) return '';
+            t = t.replace(/^0+/, '');
+            return t || '0';
+        }
+
+        function refNoFromReportUrl(report) {
+            var t = normalizeWellToken(report);
+            if (!t) return '';
+            var m = t.match(/[?&]refNo=(\d+)/i);
+            return m ? normalizeWellDigits(m[1]) : '';
+        }
+
+        function stableWellHashHex(parts) {
+            var h = 0x811c9dc5;
+            var joined = (parts || []).filter(Boolean).join('|');
+            for (var i = 0; i < joined.length; i++) {
+                h ^= joined.charCodeAt(i);
+                h = Math.imul(h, 0x01000193);
+            }
+            return (h >>> 0).toString(16).padStart(8, '0');
+        }
+
+        function resolveCanonicalWellIdentity(r, lat, lon) {
+            var reportRef = refNoFromReportUrl(r.report);
+            var refCandidates = [
+                { value: r.refno, allowShort: false, source: 'refno', field: 'refno' },
+                { value: r.ref_no, allowShort: false, source: 'ref_no', field: 'ref_no' },
+                { value: r.wellid, allowShort: false, source: 'wellid', field: 'wellid' },
+                { value: r.well_id, allowShort: false, source: 'well_id', field: 'well_id' },
+                { value: r.permit, allowShort: false, source: 'permit', field: 'permit' },
+                { value: r.id, allowShort: true, source: 'id', field: 'id' },
+                { value: reportRef, allowShort: false, source: 'report_refno', field: 'report' }
+            ];
+            var refDigits = '';
+            var refSource = '';
+            var sourceFieldsUsed = {};
+            for (var i = 0; i < refCandidates.length; i++) {
+                var d = normalizeWellDigits(refCandidates[i].value);
+                if (!d) continue;
+                if (!refCandidates[i].allowShort && d.length < 4) continue;
+                if (d) {
+                    refDigits = d;
+                    refSource = refCandidates[i].source;
+                    sourceFieldsUsed[refCandidates[i].field] = true;
+                    break;
+                }
+            }
+
+            var aliasSet = {};
+            var aliasCandidates = [r.id, r.wellid, r.well_id, r.permit, r.refno, r.ref_no, reportRef];
+            for (var j = 0; j < aliasCandidates.length; j++) {
+                var a = normalizeWellAlias(aliasCandidates[j]);
+                if (a) aliasSet[a] = true;
+                var ad = normalizeWellDigits(aliasCandidates[j]);
+                if (ad) {
+                    aliasSet[ad] = true;
+                    aliasSet['DNR' + ad] = true;
+                }
+            }
+
+            if (refDigits) {
+                var n = parseInt(refDigits, 10);
+                if (!isNaN(n)) {
+                    var canonicalDnr = 'DNR-' + n;
+                    aliasSet[canonicalDnr.replace(/[^A-Z0-9]+/g, '')] = true;
+                    var provenanceHigh = ['numeric_ref'];
+                    if (refSource === 'report_refno') provenanceHigh.push('report_url_ref');
+                    return {
+                        canonicalId: canonicalDnr,
+                        refno: n,
+                        aliases: Object.keys(aliasSet),
+                        confidence: 'high',
+                        provenance: provenanceHigh,
+                        sourceFieldsUsed: Object.keys(sourceFieldsUsed),
+                        resolverVersion: 'well-identity-v2'
+                    };
+                }
+            }
+
+            var plain = normalizeWellAlias(r.id || r.wellid || r.well_id || r.permit);
+            if (normalizeWellToken(r.id)) sourceFieldsUsed.id = true;
+            if (normalizeWellToken(r.wellid)) sourceFieldsUsed.wellid = true;
+            if (normalizeWellToken(r.well_id)) sourceFieldsUsed.well_id = true;
+            if (normalizeWellToken(r.permit)) sourceFieldsUsed.permit = true;
+            if (plain) {
+                return {
+                    canonicalId: 'WELL-' + plain,
+                    aliases: Object.keys(aliasSet),
+                    confidence: 'medium',
+                    provenance: ['text_identifier'],
+                    sourceFieldsUsed: Object.keys(sourceFieldsUsed),
+                    resolverVersion: 'well-identity-v2'
+                };
+            }
+
+            if (normalizeWellToken(lat)) sourceFieldsUsed.lat = true;
+            if (normalizeWellToken(lon)) sourceFieldsUsed.lon = true;
+            if (normalizeWellToken(r.owner)) sourceFieldsUsed.owner = true;
+            if (normalizeWellToken(r.county)) sourceFieldsUsed.county = true;
+            if (normalizeWellToken(r.depth)) sourceFieldsUsed.depth = true;
+            if (normalizeWellToken(r.report)) sourceFieldsUsed.report = true;
+            var h = stableWellHashHex([
+                normalizeWellToken(lat),
+                normalizeWellToken(lon),
+                normalizeWellAlias(r.owner),
+                normalizeWellAlias(r.county),
+                normalizeWellToken(r.depth),
+                normalizeWellToken(r.report)
+            ]);
+            return {
+                canonicalId: 'WELL-' + h,
+                aliases: Object.keys(aliasSet),
+                confidence: 'low',
+                provenance: ['stable_hash_fallback'],
+                sourceFieldsUsed: Object.keys(sourceFieldsUsed),
+                resolverVersion: 'well-identity-v2'
+            };
+        }
+
         function normalizeCsvRow(row) {
             var r = {};
             for (var k in row) {
@@ -764,7 +907,6 @@
                 var nk = String(k).replace(/^\ufeff/, '').toLowerCase().trim();
                 r[nk] = row[k];
             }
-            var refno = r.refno || r.ref_no || r.id || r.permit;
             var lat = parseFloat(r.lat || r.latitude || r.y);
             var lon = parseFloat(r.lon || r.longitude || r.long || r.x);
             if ((lat == null || isNaN(lat) || lon == null || isNaN(lon)) && (r.utm_x != null || r.easting != null) && (r.utm_y != null || r.northing != null)) {
@@ -777,8 +919,10 @@
                 }
             }
             if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return null;
+            var identity = resolveCanonicalWellIdentity(r, lat, lon);
+            var refno = identity.refno;
             var report = r.report || (refno ? 'https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=' + refno + '&_from=SUMMARY&_action=Details' : '');
-            var id = r.id || r.wellid || r.permit || (refno != null ? 'DNR-' + refno : null) || 'CJ-' + Date.now();
+            var id = identity.canonicalId;
             var lithRaw = (r.lithology_json != null && String(r.lithology_json).trim() !== '') ? r.lithology_json : r.lithology;
             if (lithRaw == null || String(lithRaw).trim() === '') {
                 for (var ki in r) {
@@ -797,10 +941,17 @@
             /* Never set lithology_json: undefined — that overwrote a valid CSV lithology_json from ...r (classic “g never shows” bug). */
             var rowOut = Object.assign({}, r, {
                 id: id,
+                well_key: id,
+                well_id_canonical: id,
+                well_identity_aliases: identity.aliases.join('|'),
+                well_identity_confidence: identity.confidence || 'low',
+                well_identity_provenance: (identity.provenance || []).join('|'),
+                well_identity_source_fields: (identity.sourceFieldsUsed || []).join('|'),
+                well_identity_resolver_version: identity.resolverVersion || 'well-identity-v2',
                 lat: lat,
                 lon: lon,
                 report: report || undefined,
-                refno: refno != null ? parseInt(refno, 10) : undefined,
+                refno: typeof refno === 'number' ? refno : undefined,
                 depth: r.depth != null ? parseInt(r.depth, 10) : undefined
             });
             if (lithRaw != null && String(lithRaw).trim() !== '') rowOut.lithology_json = String(lithRaw);
@@ -889,7 +1040,7 @@
             var CHUNK_HARD_LIMIT = 48;
             /* Exactly how many dnr_wells_chunk_*.csv.gz files you deploy (0 .. count-1). Stops Safari/console
              * noise from probing chunk_N+1 (404). Override: window.CJ_DNR_CHUNK_COUNT = 12; or -1 to probe until miss. */
-            var dnrChunkExpected = 9;
+            var dnrChunkExpected = 10;
             if (typeof window !== 'undefined' && window.CJ_DNR_CHUNK_COUNT != null) {
                 var nc = Number(window.CJ_DNR_CHUNK_COUNT);
                 if (nc === -1) dnrChunkExpected = null;
@@ -1406,6 +1557,14 @@
                 if (getGravelVeinDisplayFt(synL) !== 18) fail('g lithology-only expected 18');
                 var synVeinNearTd = { depth: 120, vein_size_ft: '118', aquifer: 'Unconsolidated', county: 'Test' };
                 if (getGravelVeinDisplayFt(synVeinNearTd) !== 118) fail('g vein near-TD 118/120');
+                var synRecon = {
+                    id: 'cj-selfcheck-reconcile',
+                    depth: '120',
+                    aquifer: 'Unconsolidated',
+                    vein_size_ft: '11',
+                    lithology_json: JSON.stringify([{ top: 0, bottom: 1, formation: 'sand and gravel' }]),
+                };
+                if (getGravelVeinDisplayFt(synRecon) !== 11) fail('reconcile csv vein over tiny lithology 1->11');
             } catch (e) { fail(String(e && e.message ? e.message : e)); }
             try { console.info('[C&J] cjGv2SelfCheck', r.ok ? 'PASS' : 'FAIL', r); } catch (e2) {}
             return r;
@@ -1580,7 +1739,8 @@
                     if (!isNaN(tp) && tp >= 0) firstTop = tp;
                 }
             }
-            if (firstTop == null) firstTop = 0;
+            /* Strict rule: only compute this metric when SG/WB material is actually present. */
+            if (firstTop == null) return null;
             var g = rockTop - firstTop;
             if (!(g > 0 && g < 900)) return null;
             return Math.round(g);
@@ -1727,6 +1887,21 @@
         }
 
         /**
+         * Reconcile lithology vs production-vein g when lithology appears obviously undersized.
+         * Example: tiny parsed litho interval "g1" while production vein is "11".
+         */
+        function reconcileLithologyAndCsvVeinG(lithoG, csvVeinG) {
+            if (csvVeinG == null || csvVeinG <= 0) return lithoG;
+            if (lithoG == null || lithoG <= 0) return csvVeinG;
+            if (csvVeinG <= lithoG) return lithoG;
+            var delta = csvVeinG - lithoG;
+            if ((lithoG <= 2 && csvVeinG >= 8) || (lithoG <= 4 && csvVeinG >= 10) || (delta >= 8 && csvVeinG >= 10)) {
+                return csvVeinG;
+            }
+            return lithoG;
+        }
+
+        /**
          * Gravel g (ft): manual WELL_G_FT_BY_REF, then lithology intervals; placeholder row hints; then CSV vein/gravel_thickness
          * only when lithology is empty or the single “no digitized table” placeholder (set window.CJ_G_VEIN_WHEN_NO_LITHO = false to disable).
          * Does not use vein as primary when real multi-interval lithology exists. Toggle sum-all: CJ_G_LITHO_USE_SUM_ALL_INTERVALS.
@@ -1789,9 +1964,24 @@
             if (gManual != null && gManual !== '' && !isNaN(Number(gManual)) && Number(gManual) > 0) {
                 return Math.round(Number(gManual));
             }
+            var layersV = getLithLayers(w);
+            var lithEmpty = !layersV || !layersV.length;
+            var lithPlaceholderOnly = !lithEmpty && lithologyIsOnlyChunkNoDigitizedPlaceholder(w);
+            var hasRealLithology = !lithEmpty && !lithPlaceholderOnly;
+            var allowPlaceholderHintG = (typeof window !== 'undefined' && window.CJ_G_FROM_PLACEHOLDER_HINTS === true);
+            /* Default strict mode: g comes from lithology math only. */
+            var allowCsvAssist = (typeof window !== 'undefined' && window.CJ_G_ALLOW_CSV_ASSIST === true);
+            var csvVein = cjGv2ReadProductionVeinFromCsv(w);
+            if (!(csvVein != null && csvVein > 0 &&
+                cjGv2VeinSaneVsCompletedDepth(csvVein, w) &&
+                gThicknessPlausibleForCsvVeinOnlyFallback(csvVein, w))) {
+                csvVein = null;
+            }
             if (cjLithoUseSumAllSandGravelIntervals()) {
                 var sumAll = sumAllSandGravelWaterBearingIntervalsFt(w);
-                if (sumAll != null && sumAll > 0 && gThicknessIsPlausibleVsCompletedDepth(sumAll, w)) return sumAll;
+                if (sumAll != null && sumAll > 0 && gThicknessIsPlausibleVsCompletedDepth(sumAll, w)) {
+                    return allowCsvAssist ? reconcileLithologyAndCsvVeinG(sumAll, csvVein) : sumAll;
+                }
             }
             var a = lastWaterBearingVeinThicknessFt(w);
             var b = sumAquiferThicknessAboveRockFt(w);
@@ -1802,15 +1992,20 @@
             if (c != null && c > 0) lithoCand.push(c);
             if (lithoCand.length) {
                 var mxL = Math.max.apply(null, lithoCand);
-                if (gThicknessIsPlausibleVsCompletedDepth(mxL, w)) return mxL;
+                if (gThicknessIsPlausibleVsCompletedDepth(mxL, w)) {
+                    return allowCsvAssist ? reconcileLithologyAndCsvVeinG(mxL, csvVein) : mxL;
+                }
             }
-            var ph = gravelGFtFromPlaceholderRowHints(w);
-            if (ph != null) return ph;
-            if (typeof window === 'undefined' || window.CJ_G_VEIN_WHEN_NO_LITHO !== false) {
-                var layersV = getLithLayers(w);
-                var lithEmpty = !layersV || !layersV.length;
-                if (lithEmpty || lithologyIsOnlyChunkNoDigitizedPlaceholder(w)) {
-                    var vein = cjGv2ReadProductionVeinFromCsv(w);
+            if (allowPlaceholderHintG) {
+                var ph = gravelGFtFromPlaceholderRowHints(w);
+                if (ph != null) return allowCsvAssist ? reconcileLithologyAndCsvVeinG(ph, csvVein) : ph;
+            }
+            /* Strict default: never emit g from csv vein alone unless explicit fallback toggle is enabled. */
+            /* Unknown / placeholder lithology should NOT emit confident g labels unless explicitly opted in. */
+            var allowNoLithoVeinFallback = (typeof window !== 'undefined' && window.CJ_G_VEIN_WHEN_NO_LITHO === true);
+            if (allowNoLithoVeinFallback) {
+                if (lithEmpty || lithPlaceholderOnly) {
+                    var vein = csvVein != null ? csvVein : cjGv2ReadProductionVeinFromCsv(w);
                     if (vein != null && vein > 0 &&
                         cjGv2VeinSaneVsCompletedDepth(vein, w) &&
                         gThicknessPlausibleForCsvVeinOnlyFallback(vein, w)) {
@@ -1819,6 +2014,46 @@
                 }
             }
             return null;
+        }
+
+        function gLabelLayerEligibleFormation(fmRaw) {
+            var l = String(fmRaw == null ? '' : fmRaw).toLowerCase();
+            if (!l.trim()) return false;
+            if (/dry\s*hole|no\s*water|abandon|plugged/i.test(l)) return false;
+            var hasSand = /\bsand\b|\bsnds?\b|\bsa\b|fine\s*sand|medium\s*sand|coarse\s*sand|silty\s*sand|sand\s*fill|sandy\b/i.test(l);
+            var hasGravel = /\bgravel\b|\bgrav\b|\bgr\b|\bsg\b|s\s*\/\s*g|s\s*&\s*g|sand\s*and\s*gravel|pea\s*stone/i.test(l);
+            if (!hasSand && !hasGravel) return false;
+            if ((/shale|limestone|dolomite|slate|bedrock|granite|marble|sandstone/i.test(l) || /\b(ls|lm|dl)\b/i.test(l)) && !hasSand && !hasGravel) return false;
+            return true;
+        }
+
+        function getGravelLayerThicknessesFt(w) {
+            var layers = getLithLayers(w);
+            if (!layers || !layers.length) return [];
+            var depthFt = getWellDisplayDepthFt(w);
+            var depthN = depthFt != null ? Number(depthFt) : NaN;
+            var out = [];
+            var prevBot = NaN;
+            for (var i = 0; i < layers.length; i++) {
+                var L = layers[i];
+                var fm = lithoFormationName(L);
+                if (!fm) continue;
+                if (/no digitized|merged welllogs|open dnr report|placeholder/i.test(fm)) continue;
+                var tb = lithoLayerTopBottomFt(L, prevBot);
+                if (!isNaN(tb.bot)) prevBot = tb.bot;
+                if (isNaN(tb.bot) || isNaN(tb.top) || tb.bot <= tb.top) continue;
+                if (!gLabelLayerEligibleFormation(fm)) continue;
+                var top = tb.top;
+                var bot = tb.bot;
+                if (!isNaN(depthN) && depthN > 0) {
+                    if (top < 0) top = 0;
+                    if (bot > depthN) bot = depthN;
+                }
+                if (isNaN(top) || isNaN(bot) || bot <= top) continue;
+                var thick = Math.round(bot - top);
+                if (thick > 0) out.push(thick);
+            }
+            return out;
         }
 
         /** R depth for bedrock wells only; clamped to completed depth when possible. */
@@ -1840,21 +2075,80 @@
         }
 
         /**
-         * Map/list g vs r: gravel-class → g from lithology (getGravelVeinDisplayFt); else rock path unchanged.
+         * Single g/r depth chip — dual-label classifier first (hub parity).
+         * Never invent G from polluted gravel_thickness==rock_start.
+         * Never invent R from completed depth on clay-only logs.
          */
         function wellGrRNumberForTag(w) {
-            if (isUnconsolidatedWell(w)) {
-                var gv = getGravelVeinDisplayFt(w);
-                if (gv != null && gv > 0) return { kind: 'g', n: Math.round(gv) };
-                return null;
+            try {
+                if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.classifyWellDual === 'function') {
+                    var dual0 = window.DnrClassifyV3.classifyWellDual(w);
+                    if (dual0.special === 'dry' || dual0.special === 'bucket') return null;
+                    var set0 = dual0.setLabel || '';
+                    if (/^G\d+\s+\d+/i.test(set0) || /^G@/i.test(set0)) {
+                        var veins0 = (dual0.formation && dual0.formation.veinBottomsFt) || [];
+                        if (veins0.length) return { kind: 'g', n: veins0[veins0.length - 1] };
+                        var nums0 = set0.match(/\d+/g);
+                        if (nums0 && nums0.length) {
+                            return { kind: 'g', n: parseInt(nums0[nums0.length - 1], 10) };
+                        }
+                    }
+                    var singleR0 = /^R@?(\d+)$/i.exec(set0);
+                    if (singleR0) return { kind: 'r', n: parseInt(singleR0[1], 10) };
+                    var veins1 = (dual0.formation && dual0.formation.veinBottomsFt) || [];
+                    if (veins1.length) return { kind: 'g', n: veins1[veins1.length - 1] };
+                    if (dual0.formationClass === 'rock' && dual0.rockTopFt != null && dual0.rockTopFt > 0) {
+                        return { kind: 'r', n: Math.round(dual0.rockTopFt) };
+                    }
+                    return null;
+                }
+            } catch (eDualTag) { /* fall through */ }
+
+            var suppressGForPlaceholder = lithologyIsOnlyChunkNoDigitizedPlaceholder(w) &&
+                !(typeof window !== 'undefined' && window.CJ_ALLOW_G_WITH_PLACEHOLDER === true);
+            if (window.CJWellTagLogic && typeof window.CJWellTagLogic.computeGrRTag === 'function') {
+                return window.CJWellTagLogic.computeGrRTag(w, {
+                    isUnconsolidatedWell: isUnconsolidatedWell,
+                    getGravelTagDepthFt: function(row) {
+                        if (suppressGForPlaceholder) return null;
+                        return getGravelVeinDisplayFt(row);
+                    },
+                    getRockTagDepthFt: getRockTagDepthFt,
+                    getDepthFallbackFt: getWellDisplayDepthFt
+                });
             }
-            var r = getRockTagDepthFt(w);
-            if (r != null && r > 0) return { kind: 'r', n: Math.round(r) };
-            var rdN = getWellDisplayDepthFt(w);
-            if (rdN != null && rdN > 0) return { kind: 'r', n: Math.round(rdN) };
+            // Residual only: lithology rock top when aquifer says bedrock — never bare depth as R
+            var rockFromLitho = getRockTagDepthFt(w);
+            if (rockFromLitho != null && rockFromLitho > 0 && /bedrock/i.test(String(w.aquifer || ''))) {
+                return { kind: 'r', n: Math.round(rockFromLitho) };
+            }
             return null;
         }
+        /** Map face residual tag — prefer classifier setLabel (R / G / S). */
         function wellMapGrTag(w) {
+            // Hub single-label: prefer classifier setLabel (R / G / S face), never dual series
+            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.wellMapFaceTag === 'function') {
+                return window.DnrClassifyV3.wellMapFaceTag(w) || '';
+            }
+            try {
+                if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.classifyWellDual === 'function') {
+                    var dualM = window.DnrClassifyV3.classifyWellDual(w);
+                    if (dualM.setLabel &&
+                        (/^R@?\d+/i.test(dualM.setLabel) ||
+                         /^[GS]\d+/i.test(dualM.setLabel) ||
+                         /^G@/i.test(dualM.setLabel))) {
+                        return ' ' + dualM.setLabel;
+                    }
+                }
+            } catch (eMapTag) { /* ignore */ }
+            if (window.CJWellTagLogic && typeof window.CJWellTagLogic.mapTag === 'function') {
+                return window.CJWellTagLogic.mapTag(w, {
+                    isUnconsolidatedWell: isUnconsolidatedWell,
+                    getGravelTagDepthFt: getGravelVeinDisplayFt,
+                    getRockTagDepthFt: getRockTagDepthFt,
+                    getDepthFallbackFt: getWellDisplayDepthFt
+                });
+            }
             var t = wellGrRNumberForTag(w);
             return t ? (' ' + t.kind + t.n) : '';
         }
@@ -1929,7 +2223,7 @@
         var WELL_G_FT_BY_REF = (function() {
             var byRef = {
                 /* Placeholder lithology in chunks — screen_length was wrongly used as g; values from DNR logs until rebuild fills lithology_json. */
-                '56489': 1,
+                '56489': 11,
                 '187956': 14,
                 /* Morgan hatchery — S&G per DNR; chunk has only “no digitized table” lithology row (no intervals). Until WellLogs merge, tag uses screened interval from registry. */
                 '192897': 10,
@@ -1955,39 +2249,22 @@
             return null;
         }
 
+        /**
+         * Unconsolidated vs rock — DnrClassifyV3 construction dual-label (default).
+         * Manual overrides still win. V1 path: ?classify=v1
+         * Old v1 body frozen in archive/classify-v1-snippets-from-index.html.js
+         */
         function isUnconsolidatedWell(w) {
             var ov = wellGrRockOverrideKind(w);
             if (ov === 'bedrock') return false;
             if (ov === 'unconsolidated') return true;
-
+            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.isUnconsolidatedWell === 'function') {
+                return window.DnrClassifyV3.isUnconsolidatedWell(w);
+            }
+            /* Fallback if script missing: aquifer text only */
             var aq = (w.aquifer || "").toLowerCase();
-            /* Rock-like aquifers first — "sandstone"/"greensand" contain "sand" and must not classify as gravel. */
-            if (/\b(bedrock|limestone|dolomite|dolostone|shale|sandstone|siltstone|greensand|granite|marble|basalt|quartzite|chert|gneiss|schist|conglomerate)\b/.test(aq)) return false;
-            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("gravel") >= 0 || aq.indexOf("sand") >= 0) return true;
-
-            var db = parseFloat(w.depth_bedrock || "");
-            var depth = parseFloat(w.depth || "");
-            if (isNaN(depth) || depth <= 0) {
-                var dInf = getWellDisplayDepthFt(w);
-                if (dInf != null) depth = dInf;
-            }
-            if (!isNaN(db) && db > 0 && !isNaN(depth)) {
-                if (depth > db) return false;
-                return true;
-            }
-
-            var lithoRock = lithoDepthToRock(w);
-            if (lithoRock != null && !isNaN(depth) && depth > lithoRock) return false;
-            if (lithoRock != null && !isNaN(depth) && depth <= lithoRock) return true;
-
-            var sd = parseFloat(w.screen_diam || w.screen_diameter || "");
-            var sl = parseFloat(w.screen_length || "");
-            /* Bedrock wells often have screen diameter in rock but no drift thickness in registry. */
-            if (!isNaN(sd) && sd > 0) {
-                var deepDiamOnly = !isNaN(depth) && depth >= 120 && (!sl || sl <= 0) && (isNaN(db) || db <= 0);
-                if (!deepDiamOnly) return true;
-            }
-            if (!isNaN(sl) && sl > 0) return true;
+            if (/\b(bedrock|limestone|dolomite|shale|sandstone|siltstone)\b/.test(aq)) return false;
+            if (aq.indexOf("unconsolidated") >= 0 || aq.indexOf("gravel") >= 0 || (aq.indexOf("sand") >= 0 && aq.indexOf("sandstone") < 0)) return true;
             return false;
         }
 
@@ -2122,28 +2399,26 @@
                 listToShow.forEach(function(w, i) {
                     var dist = (referencePosFinal && rLon2 != null) ? haversine(referencePosFinal.lat, rLon2, w.lat, w.lon) + ' mi' : '—';
                     var wellElevFt = elevWells && elevWells[i] != null ? mToFt(elevWells[i]) : null;
-                    var type = isUnconsolidatedWell(w) ? 'Gravel' : 'Rock';
+                    var type = wellTypeLabel(w);
                     var safeId = String(w.id).replace(/'/g, "\\'");
-
-                    var grnList = wellGrRNumberForTag(w);
-                    var tagTrim = wellMapGrTag(w).replace(/^\s+/, '');
                     var dList = getWellDisplayDepthFt(w);
-                    var coreLine = type + ' · ' + (dList != null ? dList : '—') + ' ft';
-                    /* Prominent g/r line — same data as map markers; always shown when tag exists (even in elev/yield/type mode). */
-                    var tagProminent = '';
-                    if (grnList) {
-                        tagProminent = '<div class="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">' +
-                            '<span>' + grnList.kind + '</span><span class="text-lg">' + grnList.n + '</span>' +
-                            '<span class="text-xs text-gray-600 font-bold"> ft</span></div>';
-                    }
+                    // Single-label standard (hub 2026-07-22): chips from face setLabel only.
+                    // Do NOT also print plain type + a second r/g series (that was dual label).
+                    var tagTokens = getOrderedTagTokens(w);
+                    var tagTokenHtml = formatListChipHtml(tagTokens);
+                    var tagProminent = tagTokenHtml
+                        ? '<div class="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">' + tagTokenHtml + '</div>'
+                        : '';
+                    var showPlainFallback = !tagTokens.length && type && !/^(Well)$/i.test(type);
+                    var coreLine = (dList != null ? dList : '—') + ' ft';
                     var detailLine;
                     if (!mode) {
-                        if (grnList) {
+                        if (tagProminent) {
                             detailLine = tagProminent + '<div class="text-xs text-gray-500 mt-0.5">' + coreLine + '</div>';
+                        } else if (showPlainFallback) {
+                            detailLine = '<div class="text-xs text-gray-500"><strong class="text-slate-800">' + escFace(type) + '</strong> · ' + coreLine + '</div>';
                         } else {
-                            detailLine = tagTrim
-                                ? '<div class="text-xs text-gray-500"><strong class="text-slate-800">' + tagTrim + '</strong> · ' + coreLine + '</div>'
-                                : '<div class="text-xs text-gray-500">' + coreLine + '</div>';
+                            detailLine = '<div class="text-xs text-gray-500">' + coreLine + '</div>';
                         }
                     } else {
                         detailLine = '';
@@ -2153,11 +2428,13 @@
                     if (mode) {
                         var parts = [];
                         var badges = [];
-                        var tagM = wellMapGrTag(w).replace(/^\s+/, '');
-                        if (tagM && !grnList) parts.push('<strong class="text-slate-800 text-sm">' + tagM + '</strong>');
-                        parts.push('<span style="color:' + wellTypeColor(w) + ';font-weight:600;">' + wellTypeLabel(w) + '</span>');
+                        // Face chips once (colored R/G/S) — not plain typeLb + residual tag dual
+                        if (tagProminent) {
+                            parts.push(tagProminent);
+                        } else if (showPlainFallback) {
+                            parts.push('<span style="color:' + wellTypeColor(w) + ';font-weight:600;">' + escFace(type) + '</span>');
+                        }
                         var dMode = getWellDisplayDepthFt(w);
-                        /* One depth phrase here only — do not repeat coreLine below (was duplicate “Gravel · 81 ft”). */
                         parts.push(dMode != null ? dMode + ' ft' : '—');
                         if (hasElevToggles()) {
                             var be = getWellBottomElev(w);
@@ -2171,8 +2448,7 @@
                             parts.push('<strong style="color:' + yieldColor(gpm) + '">' + gpmStr + '</strong>');
                             badges.push('<div class="font-bold" style="color:' + yieldColor(gpm) + ';font-size:10px;">' + (gpm != null ? gpm + ' gpm' : '–') + '</div>');
                         }
-                        /* type/elev/yield row only — coreLine matched parts (type + depth) and duplicated the same ft. */
-                        detailLine = tagProminent + '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>';
+                        detailLine = '<div class="text-xs text-gray-500">' + parts.join(' · ') + '</div>';
                         badgeHtml = '<div style="line-height:1.3;text-align:right;">' +
                             '<div class="font-semibold text-emerald-600">' + dist + '</div>' +
                             badges.join('') + '</div>';
@@ -2195,7 +2471,7 @@
                 });
                 if (!listToShow.length) {
                     if (!wells.length) {
-                        html = '<p class="text-gray-500 italic">No wells in memory yet — wait for the green banner to finish, or refresh. Then use <strong>Show wells on map</strong> or <strong>Use My Location</strong> / address / coordinates to see wells here and on the map.</p>';
+                        html = '<p class="text-gray-500 italic">No wells in memory yet — wait for the green banner to finish, or refresh. Then use <strong>Use My Location</strong> / address / coordinates to see wells here and on the map.</p>';
                     } else {
                         html = mode ?
                             '<p class="text-gray-500 italic">No matching wells in the current view. Pan/zoom the map or adjust filters.</p>' :
@@ -2406,12 +2682,38 @@
         }
         function wellLogRows(w, dnr) {
             dnr = dnr || {};
-            if (w.lithology_json) {
-                try { var j = JSON.parse(w.lithology_json); if (j && j.length) return j; } catch (e) {}
+            var fromWell = getLithLayers(w);
+            if (fromWell && fromWell.length) return fromWell;
+            function extractRows(raw) {
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw;
+                if (typeof raw === 'string') {
+                    try { return extractRows(JSON.parse(raw)); } catch (e) { return []; }
+                }
+                if (typeof raw === 'object') {
+                    var keys = ['layers', 'intervals', 'data', 'well_log', 'records', 'Lithology'];
+                    for (var i = 0; i < keys.length; i++) {
+                        var arr = raw[keys[i]];
+                        if (Array.isArray(arr) && arr.length) return arr;
+                    }
+                }
+                return [];
             }
-            if (w.lithology && Array.isArray(w.lithology) && w.lithology.length) return w.lithology;
-            if (dnr.lithology && dnr.lithology.length) return dnr.lithology;
+            var fromJson = extractRows(w.lithology_json);
+            if (fromJson.length) return fromJson;
+            var fromAlt = extractRows(w.lithology);
+            if (fromAlt.length) return fromAlt;
+            var fromDnr = extractRows(dnr.lithology);
+            if (fromDnr.length) return fromDnr;
             return [];
+        }
+        function lithoRowValue(row, keys) {
+            if (!row || typeof row !== 'object') return '';
+            for (var i = 0; i < keys.length; i++) {
+                var v = row[keys[i]];
+                if (v != null && String(v).trim() !== '') return String(v).trim();
+            }
+            return '';
         }
         function lithoShardUrls(refNo) {
             if (typeof CJ_STATIC_DEPLOY !== 'undefined' && CJ_STATIC_DEPLOY) return [];
@@ -2453,7 +2755,11 @@
                 materialBlock = '<p class="text-xs text-gray-600 mb-1">All intervals (Top → Bottom, Formation) — same as DNR Well Log:</p><div class="mt-1 overflow-x-auto border border-gray-200 rounded-lg max-h-72 overflow-y-auto"><table class="w-full text-xs border-collapse"><thead><tr class="bg-gray-100 sticky top-0 z-10"><th class="p-2 text-left border-b border-gray-200">Top</th><th class="p-2 text-left border-b border-gray-200">Bottom</th><th class="p-2 text-left border-b border-gray-200">Formation</th></tr></thead><tbody>';
                 for (var i = 0; i < logRows.length; i++) {
                     var row = logRows[i];
-                    materialBlock += '<tr class="border-b border-gray-100"><td class="p-2 align-top">' + String(row.top != null ? row.top : '').replace(/</g, '&lt;') + '</td><td class="p-2 align-top">' + String(row.bottom != null ? row.bottom : '').replace(/</g, '&lt;') + '</td><td class="p-2 align-top">' + String(row.formation != null ? row.formation : '').replace(/</g, '&lt;') + '</td></tr>';
+                    var top = lithoRowValue(row, ['top', 'Top', 'from', 'From', 'depth_top', 'DepthTop', 'start_depth', 'StartDepth']);
+                    var bottom = lithoRowValue(row, ['bottom', 'Bottom', 'to', 'To', 'depth_bottom', 'DepthBottom', 'end_depth', 'EndDepth']);
+                    var formation = lithoRowValue(row, ['formation', 'Formation', 'material', 'Material', 'lithology', 'Lithology', 'description', 'strata']);
+                    if (!top && !bottom && !formation) continue;
+                    materialBlock += '<tr class="border-b border-gray-100"><td class="p-2 align-top">' + String(top).replace(/</g, '&lt;') + '</td><td class="p-2 align-top">' + String(bottom).replace(/</g, '&lt;') + '</td><td class="p-2 align-top">' + String(formation).replace(/</g, '&lt;') + '</td></tr>';
                 }
                 materialBlock += '</tbody></table></div>';
             } else if (dnr.loading) {
@@ -2697,8 +3003,6 @@
                     cjSaveWellsToStorage();
                     var totalEl = document.getElementById('totalWells');
                     if (totalEl) totalEl.textContent = wells.length.toLocaleString();
-                    var smw = document.getElementById('showMapWells');
-                    if (smw) smw.checked = true;
                     addMarkersInRadius();
                     updateWellsList();
                     alert('Loaded ' + wells.length + ' wells. Use address, coordinates, or Use My Location to see wells within ' + RADIUS_MI + ' mi.');
@@ -2712,8 +3016,6 @@
                 _lithoCache = {};
                 searchCenter = null;
                 _dnrFullLoadStarted = false;
-                var smw = document.getElementById('showMapWells');
-                if (smw) smw.checked = false;
                 localStorage.removeItem('cjWells');
                 clearMarkers();
                 if (tempMarker && map) map.removeLayer(tempMarker);
@@ -2751,8 +3053,6 @@
             if (typeof L === 'undefined' || !map) return;
             if (!wells || !wells.length) return;
             if (searchCenter) return;
-            var smw = document.getElementById('showMapWells');
-            if (!smw || !smw.checked) return;
             var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
             if (hideWells) return;
             try {
@@ -2854,6 +3154,9 @@
         function wellTypeColor(w) {
             if (isDryHole(w)) return '#111827';
             if (isBucketWell(w)) return '#f97316';
+            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.wellTypeColor === 'function') {
+                return window.DnrClassifyV3.wellTypeColor(w);
+            }
             var aq = (w.aquifer || "").toLowerCase();
             var locType = (w.location_type || w.loc_type || "").toLowerCase();
             if (aq.indexOf("estimated") >= 0 || locType.indexOf("estimated") >= 0) return '#16a34a';
@@ -2862,15 +3165,157 @@
         }
 
         function wellTypeLabel(w) {
+            // Prefer dual classifier (map-face R/G/S). Yield-missing dry heuristics
+            // only when classifier unavailable — they false-flag many real logs.
+            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.wellTypeLabel === 'function') {
+                try {
+                    var dualLb = window.DnrClassifyV3.wellTypeLabel(w);
+                    if (dualLb) return dualLb;
+                } catch (eLb) { /* fall through */ }
+            }
             if (isDryHole(w)) return 'Dry';
             if (isBucketWell(w)) return 'Bucket';
             var aq = (w.aquifer || "").toLowerCase();
             var locType = (w.location_type || w.loc_type || "").toLowerCase();
             if (aq.indexOf("estimated") >= 0 || locType.indexOf("estimated") >= 0) return 'Est';
-            if (isUnconsolidatedWell(w)) return 'Gravel';
-            return 'Rock';
+            if (isUnconsolidatedWell(w)) return 'G';
+            return 'R';
         }
 
+        /** Face-chip colors on flat combo rows (hub parity 2026-07-22). S = yellow. */
+        var FACE_CHIP_COLORS = {
+            r: '#ffffff',
+            g: '#ffffff',
+            s: '#fde047',
+            sep: 'rgba(255,255,255,0.75)'
+        };
+
+        /**
+         * Parse map-face setLabel into ordered visual chip tokens.
+         * Single source of truth — no plain text + chips dual.
+         */
+        function parseFaceLabelTokens(label) {
+            var raw = String(label == null ? '' : label).trim();
+            if (!raw) return [];
+            var parts = raw.split(/\s*[·/]\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+            var other = [];
+            var rock = [];
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i];
+                var r = /^R@?(\d+)$/i.exec(p);
+                if (r) { rock.push('r' + r[1]); continue; }
+                var gThick = /^G(\d+)\s+(\d+)$/i.exec(p);
+                if (gThick) { other.push('g' + gThick[1] + ' ' + gThick[2]); continue; }
+                var sThick = /^S(\d+)\s+(\d+)$/i.exec(p);
+                if (sThick) { other.push('s' + sThick[1] + ' ' + sThick[2]); continue; }
+                var gAt = /^G@(\d+)$/i.exec(p);
+                if (gAt) { other.push('g' + gAt[1]); continue; }
+                // skip unparsed — never double-render free text
+            }
+            // Dom 2026-07-23: rock always last (gravel before rock)
+            return other.concat(rock);
+        }
+
+        /** Ordered tokens from classifier setLabel only (single-label standard). */
+        function getOrderedTagTokens(w) {
+            try {
+                if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.getOrderedTagTokens === 'function') {
+                    var fromV3 = window.DnrClassifyV3.getOrderedTagTokens(w);
+                    if (fromV3 && fromV3.length) return fromV3;
+                }
+                if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.classifyWellDual === 'function') {
+                    var dual = window.DnrClassifyV3.classifyWellDual(w);
+                    if (dual.special === 'dry' || dual.special === 'bucket') return [];
+                    if (dual.setLabel) {
+                        var fromFace = parseFaceLabelTokens(dual.setLabel);
+                        if (fromFace.length) return fromFace;
+                    }
+                }
+            } catch (eTok) { /* fall through */ }
+            var t = wellGrRNumberForTag(w);
+            if (t && t.kind === 'r') return ['r' + t.n];
+            if (t && t.kind === 'g') return ['g' + t.n];
+            return [];
+        }
+
+        function escFace(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        /** HTML for R/G/S on flat-color combo row. R+G white, S yellow. */
+        function formatFaceLabelHtml(label) {
+            var tokens = parseFaceLabelTokens(label);
+            if (!tokens.length) return null;
+            var parts = [];
+            for (var i = 0; i < tokens.length; i++) {
+                var tok = tokens[i];
+                var r = /^r(\d+)$/i.exec(tok);
+                if (r) {
+                    parts.push('<span style="color:' + FACE_CHIP_COLORS.r + ';font-weight:800">R' + escFace(r[1]) + '</span>');
+                    continue;
+                }
+                var g = /^g(\d+)\s+(\d+)$/i.exec(tok);
+                if (g) {
+                    parts.push('<span style="color:' + FACE_CHIP_COLORS.g + ';font-weight:800">G' + escFace(g[1]) + ' ' + escFace(g[2]) + '</span>');
+                    continue;
+                }
+                var s = /^s(\d+)\s+(\d+)$/i.exec(tok);
+                if (s) {
+                    parts.push('<span style="color:' + FACE_CHIP_COLORS.s + ';font-weight:800">S' + escFace(s[1]) + ' ' + escFace(s[2]) + '</span>');
+                    continue;
+                }
+                var gBare = /^g(\d+)$/i.exec(tok);
+                if (gBare) {
+                    parts.push('<span style="color:' + FACE_CHIP_COLORS.g + ';font-weight:800">G' + escFace(gBare[1]) + '</span>');
+                    continue;
+                }
+            }
+            if (!parts.length) return null;
+            return parts.join('<span style="color:' + FACE_CHIP_COLORS.sep + ';font-weight:700"> / </span>');
+        }
+
+        /**
+         * List chips (hub NearestWellsStrip parity): R red, G blue, S yellow.
+         * Single series from face tokens only — no plain typeLb + chips dual.
+         */
+        function formatListChipHtml(tokens) {
+            if (!tokens || !tokens.length) return '';
+            return tokens.map(function(tok) {
+                var mr = /^r(\d+)$/i.exec(tok);
+                if (mr) {
+                    return '<span class="inline-flex items-end mr-2" title="Rock top ' + escFace(mr[1]) + ' ft">' +
+                        '<span style="font-size:10px;font-weight:700;color:#dc2626">R</span>' +
+                        '<span style="font-size:15px;font-weight:800;line-height:1;color:#b91c1c">' + escFace(mr[1]) + '</span></span>';
+                }
+                var mg = /^g(\d+)\s+(\d+)$/i.exec(tok);
+                if (mg) {
+                    return '<span class="inline-flex items-end mr-2" title="Aquifer G' + escFace(mg[1]) + ' · ' + escFace(mg[2]) + ' ft thick">' +
+                        '<span style="font-size:10px;font-weight:700;color:#2563eb">G' + escFace(mg[1]) + '</span>' +
+                        '<span style="font-size:15px;font-weight:800;line-height:1;color:#1d4ed8">&nbsp;' + escFace(mg[2]) + '</span></span>';
+                }
+                var ms = /^s(\d+)\s+(\d+)$/i.exec(tok);
+                if (ms) {
+                    return '<span class="inline-flex items-end mr-2" title="Dry sand S' + escFace(ms[1]) + ' · ' + escFace(ms[2]) + ' ft thick">' +
+                        '<span style="font-size:10px;font-weight:700;color:#d97706">S' + escFace(ms[1]) + '</span>' +
+                        '<span style="font-size:15px;font-weight:800;line-height:1;color:#b45309">&nbsp;' + escFace(ms[2]) + '</span></span>';
+                }
+                var mf = /^g(\d+)$/i.exec(tok);
+                if (mf) {
+                    return '<span class="inline-flex items-end mr-2">' +
+                        '<span style="font-size:10px;font-weight:700;color:#2563eb">G</span>' +
+                        '<span style="font-size:15px;font-weight:800;line-height:1;color:#1d4ed8">' + escFace(mf[1]) + '</span></span>';
+                }
+                return '<span class="inline-block mr-2">' + escFace(tok) + '</span>';
+            }).join('');
+        }
+
+        /**
+         * Dual-axis type filter (v3): estimated keeps green but still matches uncon/rock by formation.
+         */
         function passesTypeFilter(w) {
             var showUncon = document.getElementById('typeUncon') && document.getElementById('typeUncon').checked;
             var showRock = document.getElementById('typeRock') && document.getElementById('typeRock').checked;
@@ -2884,6 +3329,17 @@
             if (dry) return showDry;
             var bucket = isBucketWell(w);
             if (bucket) return showBucket;
+
+            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.passesTypeFilter === 'function') {
+                return window.DnrClassifyV3.passesTypeFilter(w, {
+                    showUncon: showUncon,
+                    showRock: showRock,
+                    showBucket: showBucket,
+                    showDry: showDry,
+                    showEst: showEst
+                });
+            }
+            /* v1 fallback */
             var aq = (w.aquifer || "").toLowerCase();
             var locType = (w.location_type || w.loc_type || "").toLowerCase();
             var estimated = aq.indexOf("estimated") >= 0 || locType.indexOf("estimated") >= 0;
@@ -3394,40 +3850,77 @@
                 if (rowCount >= 1 && mode) {
                     var rows = [];
                     var gROnCombo = false;
+                    // Estimated green boxes: subtle type-colored outline (blue gravel / red rock).
+                    var estRingCls = '';
+                    var estBorder = null;
+                    try {
+                        if (window.DnrClassifyV3) {
+                            if (typeof window.DnrClassifyV3.estimatedTypeRingClass === 'function') {
+                                estRingCls = window.DnrClassifyV3.estimatedTypeRingClass(w) || '';
+                            }
+                            if (typeof window.DnrClassifyV3.estimatedTypeBorderColor === 'function') {
+                                estBorder = window.DnrClassifyV3.estimatedTypeBorderColor(w);
+                            }
+                        }
+                    } catch (eEst) { /* ignore */ }
                     if (showType) {
                         var tc = wellTypeColor(w);
                         var tl = wellTypeLabel(w);
-                        var grn = wellGrRNumberForTag(w);
-                        /* Footage first, then g/r (e.g. 220 g7). */
-                        var typeRowInner = grn
-                            ? (depthFtPlain + ' ' + grn.kind + String(grn.n))
-                            : (tl + ' ' + depthStr + extraTag);
-                        rows.push('<div class="cm-row" style="background:' + tc + '">' + typeRowInner + '</div>');
-                        popupLines.push(grn ? (tl + " · " + depthFtPlain + " ft · " + grn.kind + grn.n) : (tl + " · " + depthStr + (extraTag ? ' · ' + extraTag.trim() : '')));
-                        if (extraTag || grn) gROnCombo = true;
+                        // Flat fill = marker color (blue gravel / red rock / green estimated).
+                        // Face text = R/G white + S yellow (hub 2026-07-22 flat chips).
+                        // Never stack depth+grn AND face label (double-label bug).
+                        var faceHtml = formatFaceLabelHtml(tl);
+                        if (faceHtml) {
+                            rows.push('<div class="cm-row" style="background:' + tc + ';color:#fff">' + faceHtml +
+                                '<span style="color:#fff;font-weight:700"> ' + escFace(depthStr) + '</span></div>');
+                            gROnCombo = true;
+                        } else {
+                            var typeRowInner = tl + ' ' + depthStr;
+                            rows.push('<div class="cm-row" style="background:' + tc + ';color:#fff">' + escFace(typeRowInner) + '</div>');
+                        }
+                        // Layer stack only in popup detail — not on map face
+                        var stackNote = '';
+                        var locNote = '';
+                        try {
+                            if (window.DnrClassifyV3 && typeof window.DnrClassifyV3.classifyWellDual === 'function') {
+                                var dualP = window.DnrClassifyV3.classifyWellDual(w);
+                                if (dualP.layerStackLabel && dualP.layerStackLabel !== tl &&
+                                    String(tl).indexOf(dualP.layerStackLabel) < 0) {
+                                    stackNote = ' · stack ' + dualP.layerStackLabel;
+                                }
+                                if (dualP.locationQuality === 'estimated') {
+                                    locNote = dualP.formationClass === 'rock'
+                                        ? ' · estimated location · rock'
+                                        : dualP.formationClass === 'unconsolidated'
+                                            ? ' · estimated location · gravel/uncon'
+                                            : ' · estimated location';
+                                }
+                            }
+                        } catch (ePop) { /* ignore */ }
+                        popupLines.push(escFace(tl + ' · ' + depthStr + locNote + stackNote));
                     }
                     if (showElev) {
                         var be = getWellBottomElev(w);
                         var beLabel = be != null ? be + "'" : '–';
                         var eSuf = (!gROnCombo && extraTag) ? extraTag : '';
                         if (eSuf) gROnCombo = true;
-                        rows.push('<div class="cm-row" style="background:' + elevColor(be) + '">' + beLabel + ' ASL' + eSuf + '</div>');
-                        popupLines.push("Bottom: " + (be != null ? be + " ft ASL" : "unknown") + (eSuf ? ' · ' + eSuf.trim() : ''));
+                        rows.push('<div class="cm-row" style="background:' + elevColor(be) + ';color:#fff">' + escFace(beLabel + ' ASL' + eSuf) + '</div>');
+                        popupLines.push(escFace('Bottom: ' + (be != null ? be + ' ft ASL' : 'unknown') + (eSuf ? ' · ' + eSuf.trim() : '')));
                     }
                     if (showYield) {
                         var gpm = getWellPumpRate(w);
                         var gpmLabel = gpm != null ? gpm + ' gpm' : '–';
                         var ySuf = (!gROnCombo && extraTag) ? extraTag : '';
                         if (ySuf) gROnCombo = true;
-                        rows.push('<div class="cm-row" style="background:' + yieldColor(gpm) + '">' + gpmLabel + ySuf + '</div>');
-                        popupLines.push("Yield: " + (gpm != null ? gpm + " GPM" : "unknown") + (ySuf ? ' · ' + ySuf.trim() : ''));
+                        rows.push('<div class="cm-row" style="background:' + yieldColor(gpm) + ';color:#fff">' + escFace(gpmLabel + ySuf) + '</div>');
+                        popupLines.push(escFace('Yield: ' + (gpm != null ? gpm + ' GPM' : 'unknown') + (ySuf ? ' · ' + ySuf.trim() : '')));
                     }
                     if (!gROnCombo && extraTag) {
-                        rows.push('<div class="cm-row" style="background:#475569">' + extraTag.trim().replace(/</g, '') + '</div>');
-                        popupLines.push(extraTag.trim());
+                        rows.push('<div class="cm-row" style="background:#475569;color:#fff">' + escFace(extraTag.trim()) + '</div>');
+                        popupLines.push(escFace(extraTag.trim()));
                         gROnCombo = true;
                     }
-                    if (!showType && depthVal != null) popupLines.push("Depth: " + depthVal + " ft");
+                    if (!showType && depthVal != null) popupLines.push(escFace('Depth: ' + depthVal + ' ft'));
                     var effRows = rows.length || rowCount;
                     var longestText = 0;
                     for (var ri = 0; ri < rows.length; ri++) {
@@ -3441,28 +3934,56 @@
                     var padB = 4;
                     var iconW = innerW + padB * 2;
                     var iconH = innerH + padB * 2;
-                    var markerHtml = '<div class="combo-marker" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px">' + rows.join('') + '</div>';
+                    var estClassAttr = estRingCls ? ('combo-marker ' + estRingCls) : 'combo-marker';
+                    var estBorderStyle = estBorder
+                        ? ('border:1px solid ' + estBorder + ';box-shadow:0 1px 2px rgba(0,0,0,0.35);')
+                        : '';
+                    var markerHtml = '<div class="' + estClassAttr + '" data-est-type="' + (estRingCls || 'none') + '" data-est-border="' + (estBorder || 'none') + '" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px;' + estBorderStyle + '">' + rows.join('') + '</div>';
                     var marker = L.marker([latNum, lonNum], {
                         icon: L.divIcon({ className: 'well-dot', html: markerHtml, iconSize: [iconW, iconH], iconAnchor: [Math.round(iconW / 2), Math.round(iconH / 2)] })
-                    }).bindPopup(popupLines.join("<br>"));
+                    }).bindPopup(popupLines.join('<br>'));
                 } else {
                     var color = wellTypeColor(w);
-                    popupLines.push((depthVal != null ? depthVal : "—") + " ft" + (extraTag ? ' · ' + extraTag.trim() : ''));
+                    var estRingDot = '';
+                    var estBorderDot = null;
+                    try {
+                        if (window.DnrClassifyV3) {
+                            if (typeof window.DnrClassifyV3.estimatedTypeRingClass === 'function') {
+                                estRingDot = window.DnrClassifyV3.estimatedTypeRingClass(w) || '';
+                            }
+                            if (typeof window.DnrClassifyV3.estimatedTypeBorderColor === 'function') {
+                                estBorderDot = window.DnrClassifyV3.estimatedTypeBorderColor(w);
+                            }
+                        }
+                    } catch (eDot) { /* ignore */ }
+                    popupLines.push(escFace((depthVal != null ? depthVal : '—') + ' ft' + (extraTag ? ' · ' + extraTag.trim() : '')));
                     popupLines.push("<a href='https://maps.apple.com/?daddr=" + latNum + "," + lonNum + "' target='_blank'>Apple Maps</a> · <a href='https://www.google.com/maps/dir/?api=1&destination=" + latNum + "," + lonNum + "' target='_blank'>Google Maps</a>");
                     var depthTxt = depthVal != null ? Math.round(depthVal).toString() : '–';
                     var tagFs = Math.max(5, Math.round(7 * zScale));
-                    var tagEsc = extraTag ? String(extraTag).trim().replace(/</g, '').replace(/>/g, '') : '';
+                    // Under-dot: face R/G/S plain text (no dual grn residual when face exists)
+                    var facePlain = wellTypeLabel(w);
+                    var faceIsChip = facePlain && facePlain !== 'Well' && facePlain !== 'Dry' && facePlain !== 'Bucket' &&
+                        parseFaceLabelTokens(facePlain).length > 0;
+                    var underDotText = faceIsChip ? facePlain : (extraTag ? String(extraTag).trim() : '');
+                    var tagHtml = underDotText
+                        ? '<div style="margin-top:1px;font-size:' + tagFs + 'px;font-weight:800;color:#0f172a;text-shadow:0 0 3px #fff,0 0 4px #fff;line-height:1.1;white-space:nowrap">' + escFace(underDotText) + '</div>'
+                        : '';
+                    var tagLen = underDotText ? underDotText.length : 0;
+                    var dotClass = estRingDot ? ('well-marker ' + estRingDot) : 'well-marker';
+                    var dotBorderStyle = estBorderDot
+                        ? ('border:1px solid ' + estBorderDot + ';box-shadow:0 1px 2px rgba(0,0,0,0.35);')
+                        : 'border:2px solid #fff;';
                     var dotBlock = '<div style="display:flex;flex-direction:column;align-items:center;">' +
-                        '<div class="well-marker" style="background:' + color + ';width:' + dotSize + 'px;height:' + dotSize + 'px;flex-shrink:0;"><span class="well-depth-label" style="font-size:' + Math.max(6, Math.round(9 * zScale)) + 'px">' + depthTxt + '</span></div>' +
-                        (tagEsc ? '<div style="margin-top:1px;font-size:' + tagFs + 'px;font-weight:800;color:#0f172a;text-shadow:0 0 3px #fff,0 0 4px #fff;line-height:1.1;white-space:nowrap">' + tagEsc + '</div>' : '') +
+                        '<div class="' + dotClass + '" data-est-type="' + (estRingDot || 'none') + '" data-est-border="' + (estBorderDot || 'none') + '" style="background:' + color + ';width:' + dotSize + 'px;height:' + dotSize + 'px;flex-shrink:0;' + dotBorderStyle + '"><span class="well-depth-label" style="font-size:' + Math.max(6, Math.round(9 * zScale)) + 'px">' + escFace(depthTxt) + '</span></div>' +
+                        tagHtml +
                         '</div>';
-                    var bw = tagEsc ? Math.max(dotSize, Math.min(130, Math.round(6 + tagEsc.length * tagFs * 0.52))) : dotSize;
-                    var bh = tagEsc ? dotSize + Math.round(tagFs + 8) : dotSize;
+                    var bw = tagHtml ? Math.max(dotSize, Math.min(130, Math.round(6 + tagLen * tagFs * 0.52))) : dotSize;
+                    var bh = tagHtml ? dotSize + Math.round(tagFs + 8) : dotSize;
                     var marker = L.marker([latNum, lonNum], {
                         icon: L.divIcon({ className: 'well-dot',
                             html: dotBlock,
                             iconSize: [bw, bh], iconAnchor: [Math.round(bw / 2), Math.round(dotSize / 2)] })
-                    }).bindPopup(popupLines.join("<br>"));
+                    }).bindPopup(popupLines.join('<br>'));
                 }
                 marker.on('click', function() { showDetailById(w.id); });
                 wellLayer.addLayer(marker);

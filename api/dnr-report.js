@@ -65,16 +65,37 @@ function parseReportHtml(html) {
     const tds = rowHtml.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi);
     if (!tds || tds.length < 3) continue;
     const cells = tds.map((td) => stripTags(td));
-    const c0 = (cells[0] || '').toLowerCase().replace(/\s/g, '');
-    const c2 = (cells[2] || '').toLowerCase();
-    if (c0 === 'top' || (c0.includes('top') && c2.includes('formation'))) continue;
-    const topS = (cells[0] || '').replace(/\s/g, '');
-    const bottomS = (cells[1] || '').replace(/\s/g, '');
-    const formation = (cells[2] || '').trim();
+    const rowText = cells.join(' ').toLowerCase();
+    if (rowText.includes('top') && rowText.includes('bottom') && rowText.includes('formation')) continue;
+    /**
+     * General rule: find the first adjacent numeric pair anywhere in the row.
+     * This handles 3-col, 4-col (blank lead), and other shifted layouts.
+     */
+    let pairIndex = -1;
+    for (let i = 0; i < cells.length - 1; i++) {
+      const a = String(cells[i] || '').replace(/\s/g, '');
+      const b = String(cells[i + 1] || '').replace(/\s/g, '');
+      if (/^[\d.]+$/.test(a) && /^[\d.]+$/.test(b)) {
+        pairIndex = i;
+        break;
+      }
+    }
+    if (pairIndex < 0) continue;
+    const topS = String(cells[pairIndex] || '').replace(/\s/g, '');
+    const bottomS = String(cells[pairIndex + 1] || '').replace(/\s/g, '');
+    let formation = '';
+    for (let j = pairIndex + 2; j < cells.length; j++) {
+      const c = String(cells[j] || '').trim();
+      if (c) {
+        formation = c;
+        break;
+      }
+    }
     if (!/^[\d.]+$/.test(topS) || !/^[\d.]+$/.test(bottomS)) continue;
     const topNum = parseFloat(topS);
     const bottomNum = parseFloat(bottomS);
     if (isNaN(topNum) || isNaN(bottomNum)) continue;
+    if (topNum >= bottomNum + 200) continue;
     if (formation.length >= 0) out.lithology.push({ top: topS, bottom: bottomS, formation: formation || '—' });
   }
   // Plain text after "Well Log" (some pages put rows as text)

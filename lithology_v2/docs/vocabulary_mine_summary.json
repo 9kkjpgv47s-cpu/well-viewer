@@ -1,0 +1,12 @@
+{
+  "total_wells_scanned": 414953,
+  "total_lithology_layers": 2091709,
+  "distinct_formations": 174230,
+  "distinct_words": 11298,
+  "bedrock_aquifer_v1_gravel_well_count": 3029,
+  "output_files": {
+    "formation_vocabulary_full": "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo/lithology_v2/docs/formation_vocabulary_full.csv",
+    "formation_word_frequency": "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo/lithology_v2/docs/formation_word_frequency.csv",
+    "bedrock_aquifer_v1_gravel_wells": "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo/lithology_v2/docs/bedrock_aquifer_v1_gravel_wells.csv"
+  }
+}

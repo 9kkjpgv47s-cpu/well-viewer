@@ -1,0 +1,11 @@
+{
+  "total": 414953,
+  "with_real_litho": 404479,
+  "v2_bedrock": 42589,
+  "v2_unconsolidated": 355187,
+  "v2_unknown": 6703,
+  "fixed_bedrock_aq_gravel": 1247,
+  "regressions_bedrock_aq_gravel": 56,
+  "sidecar_path": "/Users/dominiceasterling/DNR_Well_Viewer_Full_Demo/lithology_v2/out/well_classification_v2.jsonl.gz",
+  "sidecar_size_mb": 2.57
+}
