@@ -133,6 +133,20 @@ body.cj-viewer { font-family: var(--font-body); }
 }
 .cj-filter-card:last-child { margin-bottom: 0; }
 
+/* Plain themed sub-card — same chrome as a filter card but NO plate:
+   for groups that hold themed controls (inputs/buttons), not locked
+   data colors. Plating these would leave .input/.btn dark-on-dark. */
+.cj-card-plain {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  padding: var(--s-3) var(--s-4) var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.cj-card-plain:last-child { margin-bottom: 0; }
+
 /* ---------- Results list ---------- */
 .cj-viewer #wellsList .card {
   padding: var(--s-3);
@@ -242,6 +256,11 @@ body.cj-viewer { font-family: var(--font-body); }
      own the right column across all rows while the left column
      (controls → results → filters) scrolls. */
   .cj-viewer .order-2 { grid-row: 1 / -1; }
+  /* Left column cards size to their content — without this they stretch
+     to the spanning map row and leave dead space at the bottom. */
+  .cj-viewer .order-1,
+  .cj-viewer .order-3,
+  .cj-viewer .order-4 { align-self: start; }
   .cj-viewer .order-2 .map-shell {
     position: sticky;
     top: calc(var(--top) + var(--s-4));
