@@ -92,3 +92,8 @@ h1 em, h2 em, .display em { font-style: italic; color: var(--accent-ink); }
 [data-theme="dark"] .bg-orb { opacity: 0.5; }
 [data-theme="field"] .bg-grid { opacity: 0.22; }
 [data-theme="field"] .bg-orb { opacity: 0.35; }
+/* Touch / small screens: the 80px-blur orb layers repaint + composite over
+   scrolled content on low-power devices — drop them entirely there. */
+@media (hover: none), (max-width: 1023px) {
+  .bg-orb { display: none; }
+}

@@ -268,3 +268,58 @@ body.cj-viewer { font-family: var(--font-body); }
     min-height: 520px;
   }
 }
+
+/* ---------- Perf: map containment + safe area --------------------------
+   Layout containment keeps map internals from forcing ancestor reflows;
+   paint containment is deliberately NOT set (Leaflet popups overflow the
+   shell's rounded edge by design). */
+.cj-viewer .map-shell { contain: layout; }
+
+@supports (padding: env(safe-area-inset-left)) {
+  body.cj-viewer {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .cj-viewer > .cj-topbar {
+    margin-left: calc(-1 * max(1rem, env(safe-area-inset-left)));
+    margin-right: calc(-1 * max(1rem, env(safe-area-inset-right)));
+  }
+}
+
+/* ---------- Phone (<768): shorter map so page content can scroll ----------
+   + content-visibility on below-the-fold sections so list/filter layout
+   cost is skipped until they approach the viewport. */
+@media (max-width: 767px) {
+  .cj-viewer .map-shell {
+    height: 64vh;                    /* fallback */
+    height: min(64svh, 560px);
+    min-height: 320px;
+  }
+  .cj-viewer .order-3,
+  .cj-viewer .order-4 {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+  }
+}
+
+/* ---------- iPad portrait (768–1023): 5/7 split, sticky map ---------- */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .cj-viewer .grid-cols-1 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .cj-viewer .order-1,
+  .cj-viewer .order-3,
+  .cj-viewer .order-4 {
+    grid-column: 1 / span 5;
+    align-self: start;
+  }
+  .cj-viewer .order-2 {
+    grid-column: 6 / span 7;
+    grid-row: 1 / -1;
+  }
+  .cj-viewer .order-2 .map-shell {
+    position: sticky;
+    top: calc(var(--top) + var(--s-4));
+    height: calc(100svh - var(--top) - 2 * var(--s-4));
+    min-height: 400px;
+  }
+}

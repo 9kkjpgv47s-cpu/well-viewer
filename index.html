@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
@@ -605,6 +605,103 @@
         var RADIUS_MI = 2;
         /** Set true first time we start fetching DNR chunks (toggle, locate, ?lat=&lon=, or default auto-load). */
         var _dnrFullLoadStarted = false;
+
+        /* --- perf: coalesced refresh scheduling ---------------------------------
+           One refreshMap per settled gesture (120ms trailing). During a
+           continuous event burst a single backstop fires 400ms in, so a long pan
+           still refreshes once mid-gesture; a burst never produces more than
+           ~2 refreshes regardless of how stretched the wall-clock processing is.
+           Direct refreshMap() calls (filters, toggles, data load) stay immediate. */
+        var cjRefreshTrail = null, cjRefreshMaxT = null, cjRefreshRaf = 0, cjBurstFired = false;
+        function cjFireRefresh() {
+            if (cjRefreshTrail) { clearTimeout(cjRefreshTrail); cjRefreshTrail = null; }
+            if (cjRefreshMaxT) { clearTimeout(cjRefreshMaxT); cjRefreshMaxT = null; }
+            if (cjRefreshRaf) cancelAnimationFrame(cjRefreshRaf);
+            cjRefreshRaf = requestAnimationFrame(function () { cjRefreshRaf = 0; refreshMap(); });
+        }
+        function cjScheduleRefresh() {
+            if (cjRefreshTrail) clearTimeout(cjRefreshTrail);
+            cjRefreshTrail = setTimeout(function () { cjRefreshTrail = null; cjBurstFired = false; cjFireRefresh(); }, 120);
+            if (!cjRefreshMaxT && !cjBurstFired) {
+                cjRefreshMaxT = setTimeout(function () { cjRefreshMaxT = null; cjBurstFired = true; cjFireRefresh(); }, 400);
+            }
+        }
+
+        /* --- perf: spatial grid index + pool memos -------------------------------
+           wells is only ever reassigned (never mutated in place), so array
+           identity + length is a valid cache key. Indexed results are identical
+           to the old linear scans: same elements in the same original order
+           (candidates sorted by ascending index), same inclusive tests. */
+        var CJ_PERF_CHECK = /[?&]cj_perf_check=1/.test(location.search);
+        var cjWellsIndexRef = null, cjWellsIndex = null;
+        function cjGetWellsIndex() {
+            if (cjWellsIndex && cjWellsIndexRef === wells && cjWellsIndex.len === wells.length) return cjWellsIndex;
+            var cell = 0.05, g = new Map();
+            var lats = new Float64Array(wells.length), lons = new Float64Array(wells.length);
+            for (var i = 0; i < wells.length; i++) {
+                var la = Number(wells[i].lat), lo = Number(wells[i].lon);
+                lats[i] = la; lons[i] = lo;
+                if (isNaN(la) || isNaN(lo)) continue;
+                var k = Math.floor(la / cell) * 100000 + Math.floor(lo / cell);
+                var a = g.get(k); if (!a) { a = []; g.set(k, a); }
+                a.push(i);
+            }
+            cjWellsIndex = { g: g, lats: lats, lons: lons, len: wells.length };
+            cjWellsIndexRef = wells;
+            return cjWellsIndex;
+        }
+        function cjCellIndices(idx, s, n, w, e) {
+            var out = [], cell = 0.05;
+            var i0 = Math.floor(s / cell), i1 = Math.floor(n / cell);
+            var j0 = Math.floor(w / cell), j1 = Math.floor(e / cell);
+            for (var i = i0; i <= i1; i++) for (var j = j0; j <= j1; j++) {
+                var a = idx.g.get(i * 100000 + j);
+                if (a) for (var t = 0; t < a.length; t++) out.push(a[t]);
+            }
+            out.sort(function (a, b) { return a - b; });
+            return out;
+        }
+        var cjViewMemo = { arr: null, len: -1, k: null, val: null };
+        var cjRadiusMemo = { arr: null, len: -1, k: null, val: null };
+        function cjViewIndexed(s, n, w, e) {
+            var idx = cjGetWellsIndex();
+            var cand = cjCellIndices(idx, s, n, w, e);
+            var out = [];
+            for (var c = 0; c < cand.length; c++) {
+                var i = cand[c], lat = idx.lats[i], lon = idx.lons[i];
+                if (lat >= s && lat <= n && lon >= w && lon <= e) out.push(wells[i]);
+            }
+            return out;
+        }
+        function cjRadiusIndexed(lat, lon) {
+            var idx = cjGetWellsIndex();
+            var dLat = (RADIUS_MI * 1.1) / 69.0;
+            var dLon = dLat / Math.max(0.2, Math.abs(Math.cos(lat * Math.PI / 180)));
+            var cand = cjCellIndices(idx, lat - dLat, lat + dLat, lon - dLon, lon + dLon);
+            var out = [];
+            for (var c = 0; c < cand.length; c++) {
+                var i = cand[c];
+                if (parseFloat(haversine(lat, lon, idx.lats[i], idx.lons[i])) <= RADIUS_MI) out.push(wells[i]);
+            }
+            return out;
+        }
+        function cjPoolsEqual(a, b) {
+            if (a.length !== b.length) return false;
+            for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+            return true;
+        }
+
+        /* --- perf: marker reuse + per-well payload cache --------------------------
+           Keyed by the exact rendered output (html + popup + icon size/anchor +
+           position), so a marker is rebuilt only when its output would differ. */
+        var cjMarkerPool = new Map();      /* output-key -> array of live L.Marker */
+        var cjPayloadCache = new WeakMap(); /* well -> {sig, html, popup, iconW, iconH, ax, ay} */
+        function cjClearAllWellMarkers() {
+            if (wellLayer) {
+                cjMarkerPool.forEach(function (arr) { arr.forEach(function (m) { wellLayer.removeLayer(m); }); });
+            }
+            cjMarkerPool = new Map();
+        }
         function ensureFullDnrDatasetLoaded() {
             if (_dnrFullLoadStarted) return;
             _dnrFullLoadStarted = true;
@@ -799,7 +896,14 @@
             L.control.zoom({ position: 'topright' }).addTo(map);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, minZoom: 8, attribution: '© OpenStreetMap | C&J Well co' }).addTo(map);
             map.addLayer(wellLayer);
-            map.on('moveend zoomend', function() { refreshMap(); });
+            map.on('moveend zoomend', function() { cjScheduleRefresh(); });
+            var cjResizeTimer = null;
+            function cjQueueInvalidateSize() {
+                if (cjResizeTimer) clearTimeout(cjResizeTimer);
+                cjResizeTimer = setTimeout(function() { cjResizeTimer = null; if (map) map.invalidateSize(); }, 150);
+            }
+            window.addEventListener('resize', cjQueueInvalidateSize);
+            window.addEventListener('orientationchange', cjQueueInvalidateSize);
             try { console.info('[C&J Well Viewer] build', APP_BUILD_STAMP, '— if this is old, hard-refresh or clear site cache'); } catch (e) {}
             attachMapChromeIntoLeaflet();
             updateWellsList();
@@ -1341,16 +1445,32 @@
         function setupTrackpadPanZoom() {
             var mapContainer = document.getElementById('map');
             if (!mapContainer || !map) return;
+            var cjWheelRaf = 0, cjWheelX = 0, cjWheelY = 0, cjWheelZoom = 0;
             mapContainer.addEventListener('wheel', function(e) {
                 if (!map) return;
                 e.preventDefault();
                 if (e.ctrlKey || e.metaKey) {
-                    var delta = e.deltaY > 0 ? -1 : 1;
-                    map.setZoom(map.getZoom() + delta);
+                    cjWheelZoom += e.deltaY > 0 ? -1 : 1;
                 } else {
-                    var dx = e.deltaX != null ? e.deltaX : 0;
-                    var dy = e.deltaY != null ? e.deltaY : 0;
-                    if (dx !== 0 || dy !== 0) map.panBy([-dx, -dy], { animate: false });
+                    cjWheelX += e.deltaX != null ? e.deltaX : 0;
+                    cjWheelY += e.deltaY != null ? e.deltaY : 0;
+                }
+                /* Perf: apply accumulated pan/zoom once per animation frame instead
+                   of one map op (and one full refreshMap) per wheel event. */
+                if (!cjWheelRaf) {
+                    cjWheelRaf = requestAnimationFrame(function() {
+                        cjWheelRaf = 0;
+                        if (!map) { cjWheelX = cjWheelY = cjWheelZoom = 0; return; }
+                        if (cjWheelZoom !== 0) {
+                            var z = cjWheelZoom; cjWheelZoom = 0;
+                            map.setZoom(map.getZoom() + z);
+                        }
+                        if (cjWheelX !== 0 || cjWheelY !== 0) {
+                            var dx = cjWheelX, dy = cjWheelY;
+                            cjWheelX = cjWheelY = 0;
+                            map.panBy([-dx, -dy], { animate: false });
+                        }
+                    });
                 }
             }, { passive: false });
         }
@@ -1361,9 +1481,25 @@
             return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
         }
 
-        function clearMarkers() { if (wellLayer) wellLayer.clearLayers(); if (map && tempMarker) map.removeLayer(tempMarker); tempMarker = null; }
+        function clearMarkers() { cjClearAllWellMarkers(); if (map && tempMarker) map.removeLayer(tempMarker); tempMarker = null; }
 
         function getWellsWithin2Miles(center) {
+            if (!center || wells.length === 0) return [];
+            var lat = Number(center.lat);
+            var lon = Number(center.lon != null ? center.lon : center.lng);
+            if (isNaN(lat) || isNaN(lon)) return [];
+            if (CJ_PERF_CHECK) {
+                var aC = cjRadiusIndexed(lat, lon), bC = getWellsWithin2Miles_linear(center);
+                if (!cjPoolsEqual(aC, bC)) console.error('[cj_perf_check] radius pool mismatch indexed=' + aC.length + ' linear=' + bC.length);
+                return aC;
+            }
+            var k = lat.toFixed(9) + ',' + lon.toFixed(9) + ',' + RADIUS_MI;
+            if (cjRadiusMemo.arr === wells && cjRadiusMemo.len === wells.length && cjRadiusMemo.k === k) return cjRadiusMemo.val;
+            var out = cjRadiusIndexed(lat, lon);
+            cjRadiusMemo = { arr: wells, len: wells.length, k: k, val: out };
+            return out;
+        }
+        function getWellsWithin2Miles_linear(center) {
             if (!center || wells.length === 0) return [];
             var lat = Number(center.lat);
             var lon = Number(center.lon != null ? center.lon : center.lng);
@@ -3105,6 +3241,22 @@
             var bounds = map.getBounds();
             var s = bounds.getSouth(), n = bounds.getNorth();
             var w = bounds.getWest(), e = bounds.getEast();
+            if (CJ_PERF_CHECK) {
+                var aC = cjViewIndexed(s, n, w, e), bC = getWellsInView_linear();
+                if (!cjPoolsEqual(aC, bC)) console.error('[cj_perf_check] view pool mismatch indexed=' + aC.length + ' linear=' + bC.length);
+                return aC;
+            }
+            var k = s.toFixed(9) + ',' + n.toFixed(9) + ',' + w.toFixed(9) + ',' + e.toFixed(9);
+            if (cjViewMemo.arr === wells && cjViewMemo.len === wells.length && cjViewMemo.k === k) return cjViewMemo.val;
+            var out = cjViewIndexed(s, n, w, e);
+            cjViewMemo = { arr: wells, len: wells.length, k: k, val: out };
+            return out;
+        }
+        function getWellsInView_linear() {
+            if (!map || !wells.length) return [];
+            var bounds = map.getBounds();
+            var s = bounds.getSouth(), n = bounds.getNorth();
+            var w = bounds.getWest(), e = bounds.getEast();
             return wells.filter(function(well) {
                 var lat = Number(well.lat), lon = Number(well.lon);
                 return lat >= s && lat <= n && lon >= w && lon <= e;
@@ -3854,16 +4006,17 @@
             yieldViewActive = showYield;
 
             if (!map || !wellLayer) return;
-            wellLayer.clearLayers();
             if (tempMarker && map) { map.removeLayer(tempMarker); tempMarker = null; }
 
             var hideWells = document.getElementById('hideWells') && document.getElementById('hideWells').checked;
             if (hideWells) {
+                cjClearAllWellMarkers();
                 updateWellsList();
                 return;
             }
 
             if (!userRequestedWellMarkers()) {
+                cjClearAllWellMarkers();
                 updateWellsList();
                 return;
             }
@@ -3901,8 +4054,20 @@
             var zScale = Math.max(0.45, Math.min(1.45, 0.32 + (zoom - 7) * 0.09)) * markerLabelScale;
             var dotSize = Math.max(10, Math.round(16 * zScale));
 
+            /* Perf: reuse markers whose rendered output is unchanged. Payloads
+               (html + popup + icon size/anchor) are cached per well object for
+               the current render signature; markers are keyed by the exact
+               output so only adds/removes/changes touch the DOM. */
+            var payloadSig = mode + '|' + (showType ? 1 : 0) + (showElev ? 1 : 0) + (showYield ? 1 : 0) + '|' + markerLabelScale + '|' + zoom;
+            var prevPool = cjMarkerPool;
+            cjMarkerPool = new Map();
             filtered.forEach(function(w) {
                 var latNum = Number(w.lat), lonNum = Number(w.lon);
+                var payload = cjPayloadCache.get(w);
+                if (payload && payload.sig === payloadSig) {
+                    /* unchanged output — reuse */
+                } else {
+                payload = { sig: payloadSig };
                 var popupLines = ["<b>" + w.id + "</b>"];
                 if (w.county) popupLines.push(w.county + " County");
                 var depthVal = getWellDisplayDepthFt(w);
@@ -4002,9 +4167,10 @@
                         ? ('border:1px solid ' + estBorder + ';box-shadow:0 1px 2px rgba(0,0,0,0.35);')
                         : '';
                     var markerHtml = '<div class="' + estClassAttr + '" data-est-type="' + (estRingCls || 'none') + '" data-est-border="' + (estBorder || 'none') + '" style="font-size:' + comboFs + 'px;width:' + innerW + 'px;min-width:' + innerW + 'px;max-width:' + innerW + 'px;' + estBorderStyle + '">' + rows.join('') + '</div>';
-                    var marker = L.marker([latNum, lonNum], {
-                        icon: L.divIcon({ className: 'well-dot', html: markerHtml, iconSize: [iconW, iconH], iconAnchor: [Math.round(iconW / 2), Math.round(iconH / 2)] })
-                    }).bindPopup(popupLines.join('<br>'));
+                    payload.html = markerHtml;
+                    payload.popup = popupLines.join('<br>');
+                    payload.iconW = iconW; payload.iconH = iconH;
+                    payload.ax = Math.round(iconW / 2); payload.ay = Math.round(iconH / 2);
                 } else {
                     var color = wellTypeColor(w);
                     var estRingDot = '';
@@ -4042,15 +4208,30 @@
                         '</div>';
                     var bw = tagHtml ? Math.max(dotSize, Math.min(130, Math.round(6 + tagLen * tagFs * 0.52))) : dotSize;
                     var bh = tagHtml ? dotSize + Math.round(tagFs + 8) : dotSize;
-                    var marker = L.marker([latNum, lonNum], {
-                        icon: L.divIcon({ className: 'well-dot',
-                            html: dotBlock,
-                            iconSize: [bw, bh], iconAnchor: [Math.round(bw / 2), Math.round(dotSize / 2)] })
-                    }).bindPopup(popupLines.join('<br>'));
+                    payload.html = dotBlock;
+                    payload.popup = popupLines.join('<br>');
+                    payload.iconW = bw; payload.iconH = bh;
+                    payload.ax = Math.round(bw / 2); payload.ay = Math.round(dotSize / 2);
                 }
-                marker.on('click', function() { showDetailById(w.id); });
-                wellLayer.addLayer(marker);
+                cjPayloadCache.set(w, payload);
+                }
+                var markerKey = w.id + '|' + latNum + '|' + lonNum + '|' + payload.html + '|' + payload.popup + '|' + payload.iconW + 'x' + payload.iconH + '|' + payload.ax + ',' + payload.ay;
+                var stash = prevPool.get(markerKey);
+                var marker = (stash && stash.length) ? stash.pop() : null;
+                if (!marker) {
+                    marker = L.marker([latNum, lonNum], {
+                        icon: L.divIcon({ className: 'well-dot', html: payload.html,
+                            iconSize: [payload.iconW, payload.iconH], iconAnchor: [payload.ax, payload.ay] })
+                    }).bindPopup(payload.popup);
+                    marker.on('click', function() { showDetailById(w.id); });
+                    wellLayer.addLayer(marker);
+                }
+                var poolArr = cjMarkerPool.get(markerKey);
+                if (!poolArr) { poolArr = []; cjMarkerPool.set(markerKey, poolArr); }
+                poolArr.push(marker);
             });
+            /* Remove markers whose output is no longer in the selected set. */
+            prevPool.forEach(function(arr) { arr.forEach(function(m) { wellLayer.removeLayer(m); }); });
 
             updateWellsList();
         }
