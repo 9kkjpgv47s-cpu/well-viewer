@@ -1,0 +1,71 @@
+/* ==========================================================================
+   C&J bore loader — a BrandMark, a vertical track with mono depth ticks, and a
+   1px accent bore line that drills downward on a 1.6s loop. Reduced motion
+   holds the line at full depth.
+   ========================================================================== */
+
+.cj-bore {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-6) var(--s-4);
+}
+.cj-bore .cj-bore__mark { width: 34px; height: 34px; }
+
+.cj-bore__track {
+  position: relative;
+  width: 84px; height: 132px;
+}
+/* left hairline guide */
+.cj-bore__track::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0;
+  width: 1px; background: var(--line);
+}
+/* depth ticks — mono labels on the right of the track */
+.cj-bore__tick {
+  position: absolute; left: 10px;
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  letter-spacing: 0.06em; color: var(--ink-4);
+  display: flex; align-items: center; gap: var(--s-2);
+  transform: translateY(-50%);
+}
+.cj-bore__tick::before { content: ""; width: 6px; height: 1px; background: var(--line-strong); order: -1; margin-left: -10px; }
+.cj-bore__tick:nth-of-type(1) { top: 0; }
+.cj-bore__tick:nth-of-type(2) { top: 50%; }
+.cj-bore__tick:nth-of-type(3) { top: 100%; }
+
+/* the bore line — grows from the surface downward */
+.cj-bore__line {
+  position: absolute; top: 0; left: 0;
+  width: 1px; height: 100%;
+  background: var(--accent);
+  transform: scaleY(0); transform-origin: top;
+  animation: cj-bore-drop 1.6s var(--ease-in-out) infinite;
+}
+/* bit/head dot riding the tip */
+.cj-bore__bit {
+  position: absolute; top: 0; left: 0;
+  width: 7px; height: 7px; margin-left: -3px; margin-top: -3.5px;
+  border-radius: 50%; background: var(--accent);
+  animation: cj-bore-bit 1.6s var(--ease-in-out) infinite;
+}
+@keyframes cj-bore-drop {
+  0% { transform: scaleY(0); }
+  70% { transform: scaleY(1); }
+  100% { transform: scaleY(1); }
+}
+@keyframes cj-bore-bit {
+  0% { transform: translateY(0); }
+  70% { transform: translateY(132px); }
+  100% { transform: translateY(132px); }
+}
+
+/* mono uppercase status line under the track */
+.cj-bore__status {
+  font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cj-bore__line { animation: none; transform: scaleY(1); }
+  .cj-bore__bit { animation: none; transform: translateY(132px); }
+}

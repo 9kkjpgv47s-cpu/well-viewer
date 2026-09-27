@@ -1,0 +1,154 @@
+/* ==========================================================================
+   C&J design tokens — shared by Driller Hub, Well Viewer, and C&J OS surfaces.
+   Instrument Serif display · Inter body · IBM Plex Mono labels/numerals.
+   Paper/ink neutrals, C&J red/yellow accents, hairlines, three themes.
+   light/dark values are verbatim from C&J OS; field is the high-contrast
+   field-readability theme (pure white ground, black ink, deep C&J red).
+   ========================================================================== */
+
+:root {
+  /* Fonts — --f-* vars are supplied by next/font in the Next apps; the named
+     families resolve to the self-hosted faces in fonts.css elsewhere. The
+     var() fallbacks are required: where no --f-* var is defined (the static
+     viewer), a bare var() reference invalidates the whole declaration and
+     text falls back to the initial serif. */
+  --font-display: var(--f-display, "Instrument Serif"), Georgia, "Times New Roman", serif;
+  --font-body: var(--f-body, "Inter"), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--f-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Type scale — base stays >= 16px so iOS never zooms inputs. */
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.84rem;
+  --fs-base: 1rem;
+  --fs-md: 1.1rem;
+  --fs-lg: 1.5rem;
+  --fs-xl: clamp(1.9rem, 1.5rem + 1.2vw, 2.5rem);
+
+  /* Spacing */
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem; --s-5: 1.5rem;
+  --s-6: 2rem; --s-7: 3rem; --s-8: 4rem;
+
+  --radius: 6px;
+  --radius-lg: 12px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --dur-fast: 0.12s;  /* hovers, feedback — direct manipulation range */
+  --dur-med: 0.18s;   /* state changes, badges, toggles */
+  --dur-slow: 0.28s;  /* panels, reveals — ceiling for work surfaces */
+
+  /* Shell metrics */
+  --top: 64px;
+  --wrap: 1320px;
+  --gutter: clamp(1.25rem, 3vw, 2.75rem);
+  --tap: 44px;        /* minimum control height; 48px in field theme */
+
+  /* Data plates — containers whose content uses locked data colors (legend
+     bands, R/G/S chips, well-type swatches) get a fixed light surface in
+     EVERY theme so the encoding stays readable. Same values everywhere;
+     --plate-ring gives the plate a subtle outline on dark grounds. */
+  --plate: #FFFFFF;
+  --plate-ink: #0F1522;
+  --plate-line: rgba(15, 21, 34, 0.12);
+  --plate-ring: none;
+}
+
+/* ---------- Light ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F6F4EF;
+  --bg-2: #EFECE5;
+  --bg-3: #E7E3DA;
+  --surface: #FBFAF7;
+  --ink: #0F1522;
+  --ink-2: #3A4150;
+  --ink-3: #565E6A;
+  --ink-4: #5F6672;
+  --line: rgba(15, 21, 34, 0.10);
+  --line-strong: rgba(15, 21, 34, 0.22);
+  --accent: #C60000;
+  --accent-ink: #8F0000;
+  --accent-soft: rgba(198, 0, 0, 0.09);
+  --accent-2: #FFE90A;
+  --accent-2-ink: #7A6200;
+  --accent-2-soft: rgba(255, 233, 10, 0.16);
+  --ok: #267030;
+  --ok-soft: rgba(15, 123, 79, 0.12);
+  --warn: #94570F;
+  --warn-soft: rgba(217, 119, 6, 0.14);
+  --bad: #B3261E;
+  --bad-soft: rgba(179, 38, 30, 0.10);
+  --bad-ink: #ffffff;
+  --shadow: 0 1px 2px rgba(15, 21, 34, 0.04), 0 12px 32px -12px rgba(15, 21, 34, 0.14);
+  --glass: rgba(246, 244, 239, 0.82);
+  --selection: rgba(198, 0, 0, 0.18);
+}
+
+/* ---------- Dark ---------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0A0F1A;
+  --bg-2: #0F1522;
+  --bg-3: #151C2B;
+  --surface: #0E1420;
+  --ink: #EDEBE6;
+  --ink-2: #B9BCC4;
+  --ink-3: #8B939F;
+  --ink-4: #828A96;
+  --line: rgba(237, 235, 230, 0.09);
+  --line-strong: rgba(237, 235, 230, 0.20);
+  --accent: #F2554D;
+  --accent-ink: #FF8A80;
+  --accent-soft: rgba(242, 85, 77, 0.12);
+  --accent-2: #FFE90A;
+  --accent-2-ink: #FFE90A;
+  --accent-2-soft: rgba(255, 233, 10, 0.16);
+  --ok: #5BD39B;
+  --ok-soft: rgba(91, 211, 155, 0.14);
+  --warn: #F2B85C;
+  --warn-soft: rgba(242, 184, 92, 0.14);
+  --bad: #F28B82;
+  --bad-soft: rgba(242, 139, 130, 0.14);
+  --bad-ink: #241210;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
+  --glass: rgba(10, 15, 26, 0.78);
+  --selection: rgba(242, 85, 77, 0.28);
+  /* Data plates keep their white face in dark; a faint ring seats them. */
+  --plate-ring: 0 0 0 1px rgba(237, 235, 230, 0.14), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- Field — daylight legibility ----------
+   Pure-white ground, black ink, deep C&J red, solid surfaces (no translucency,
+   no blur), 48px tap targets, slightly larger base type. */
+[data-theme="field"] {
+  color-scheme: light;
+  --bg: #FFFFFF;
+  --bg-2: #F2F2F0;
+  --bg-3: #E6E5E1;
+  --surface: #FFFFFF;
+  --ink: #000000;
+  --ink-2: #1E232C;
+  --ink-3: #3A4150;
+  --ink-4: #4A515C;
+  --line: rgba(0, 0, 0, 0.22);
+  --line-strong: rgba(0, 0, 0, 0.45);
+  --accent: #B00000;
+  --accent-ink: #7A0000;
+  --accent-soft: rgba(176, 0, 0, 0.10);
+  --accent-2: #FFE90A;
+  --accent-2-ink: #5C4A00;
+  --accent-2-soft: rgba(255, 233, 10, 0.28);
+  --ok: #1B5E20;
+  --ok-soft: rgba(27, 94, 32, 0.12);
+  --warn: #7A4500;
+  --warn-soft: rgba(122, 69, 0, 0.12);
+  --bad: #A50E0E;
+  --bad-soft: rgba(165, 14, 14, 0.10);
+  --bad-ink: #ffffff;
+  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  --glass: #FFFFFF;
+  --selection: rgba(176, 0, 0, 0.20);
+  --fs-base: 1.0625rem;
+  --tap: 48px;
+}

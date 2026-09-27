@@ -7,8 +7,11 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="apple-mobile-web-app-title" content="C&J Well co">
     <!-- BUILD_STAMP: bump when deploying so you can View Source and confirm live HTML -->
-    <meta name="cj-build" content="2026-07-23-viewer-parity" />
-    <title>C&J Well co — Well Viewer</title>
+    <meta name="cj-build" content="2026-09-27-cj-universal" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F4EF">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0A0F1A">
+    <title>C&J Well Co — Well Viewer</title>
+    <script src="cj/theme-init.js"></script>
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="manifest" href="manifest.json">
@@ -329,8 +332,41 @@
         #modalFooter { flex-wrap: wrap; }
         #modalFooter button { flex: 1 1 140px !important; }
     </style>
+    <!-- C&J design system — loaded after the inline styles so chrome remaps win.
+         Locked data colors (marker CSS, toggle sliders, list chips) untouched. -->
+    <link rel="stylesheet" href="cj/fonts.css">
+    <link rel="stylesheet" href="cj/tokens.css">
+    <link rel="stylesheet" href="cj/base.css">
+    <link rel="stylesheet" href="cj/components.css">
+    <link rel="stylesheet" href="cj/motion.css">
+    <link rel="stylesheet" href="cj/loader.css">
+    <link rel="stylesheet" href="cj/viewer.css">
 </head>
-<body class="p-4 max-w-7xl mx-auto">
+<body class="cj-viewer p-4 max-w-7xl mx-auto">
+    <header class="cj-topbar">
+        <span class="cj-brand">
+            <svg class="cj-brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                <rect x="4" y="5.4" width="32" height="32" fill="var(--accent-2)" stroke="#111" stroke-width="0.7" />
+                <rect x="3.8" y="3.8" width="22.9" height="22.9" fill="var(--accent)" stroke="#111" stroke-width="0.7" />
+                <rect x="14.2" y="10.9" width="12.5" height="8.2" fill="#fff" stroke="#111" stroke-width="0.6" />
+                <text x="20.45" y="15" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="8" fill="#111">&amp;</text>
+            </svg>
+            <span class="cj-brand-text">C&J <em>Well Co</em></span>
+            <span class="cj-tag">Well Viewer</span>
+        </span>
+        <div class="cj-top-actions">
+            <a class="cj-app-switch" href="https://driller-hub.vercel.app/" aria-label="Open the Driller hub">Driller hub <span class="arrow">→</span></a>
+            <button type="button" class="theme-toggle" data-cj-theme-toggle aria-label="Switch theme">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle class="tt-sun" cx="12" cy="12" r="4" />
+                    <g class="tt-rays"><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></g>
+                    <path class="tt-moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+                    <circle class="tt-field" cx="12" cy="12" r="6.2" />
+                </svg>
+            </button>
+        </div>
+    </header>
+    <main>
     <div class="safari-banner">
         <strong>To see the map, this page must open in Safari</strong>
         <p style="margin:0.35rem 0 0 0;"><strong>If "Open with" only shows Preview:</strong> Use the link method below — iOS often won't offer Safari for this file.</p>
@@ -342,102 +378,155 @@
         </ol>
         <span class="link-tip">Still no “Open in Safari”? Ask the sender to upload this file to iCloud Drive, Google Drive, or Dropbox and send you the <strong>link</strong> — open the link in Safari to get the map.</span>
     </div>
-    <div id="loadingDnrPanel" class="p-4 mb-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-center">
-        <strong>Loading well data…</strong> <span id="loadingDnrStatus">DNR chunks load in the background. Use 📍 / address / coordinates to focus the map.</span>
+    <div id="chatTip" class="chat-tip hidden">
+        <strong>Link opened but no map?</strong> Long-press the link and choose Open in Safari (or paste the link in Safari). If it still fails, use app.netlify.com/drop to upload this file and get a link that runs the map.
+        <button type="button" onclick="document.getElementById('chatTip').classList.add('hidden');" style="margin-left:0.5rem;background:#92400e;color:#fff;border:none;padding:0.25rem 0.5rem;border-radius:4px;font-size:0.75rem;cursor:pointer;">Got it</button>
+    </div>
+    <div class="cj-page-head">
+        <p class="eyebrow">Indiana DNR Registry</p>
+        <h1>Well <em>viewer</em></h1>
+        <p class="lede">Map, search, filters, and the full DNR detail report.</p>
+    </div>
+    <div id="loadingDnrPanel" class="mb-4">
+        <div class="cj-bore" role="status" aria-live="polite">
+            <svg class="cj-bore__mark cj-brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                <rect x="4" y="5.4" width="32" height="32" fill="var(--accent-2)" stroke="#111" stroke-width="0.7" />
+                <rect x="3.8" y="3.8" width="22.9" height="22.9" fill="var(--accent)" stroke="#111" stroke-width="0.7" />
+                <rect x="14.2" y="10.9" width="12.5" height="8.2" fill="#fff" stroke="#111" stroke-width="0.6" />
+                <text x="20.45" y="15" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="8" fill="#111">&amp;</text>
+            </svg>
+            <div class="cj-bore__track" aria-hidden="true">
+                <span class="cj-bore__tick">0 FT</span>
+                <span class="cj-bore__tick">50 FT</span>
+                <span class="cj-bore__tick">100 FT</span>
+                <span class="cj-bore__line"></span>
+                <span class="cj-bore__bit"></span>
+            </div>
+        </div>
+        <strong>Loading well data…</strong> <span id="loadingDnrStatus" class="cj-bore__status">DNR chunks load in the background. Use My Location / address / coordinates to focus the map.</span>
     </div>
     <div id="loadFailedPanel" hidden aria-hidden="true">
-        <h3>Map didn’t load</h3>
+        <h2>Map didn’t load</h2>
         <p>Refresh the page or try another browser. If you opened this as a file on your device, use the live link instead (this app runs from the web).</p>
         <ol class="hidden">
             <li><strong>Long-press the link</strong> (don't just tap) and choose <strong>Open in Safari</strong>. Or copy the link and paste it into Safari's address bar.</li><li><strong>If the map still doesn't load:</strong> Use <strong>Netlify Drop</strong>: on a computer open <strong>app.netlify.com/drop</strong> in Chrome or Safari, drag this HTML file onto the page, and get the link. Open that link in Safari on your phone — the map will work.</li>
             <li><strong>On computer:</strong> Double‑click the file to open it in Chrome or Safari, or run <code>python3 -m http.server 8080</code> in the file’s folder and open <strong>http://localhost:8080/</strong> in the browser.</li>
         </ol>
     </div>
-    <div id="chatTip" class="chat-tip hidden">
-        <strong>Link opened but no map?</strong> Long-press the link and choose Open in Safari (or paste the link in Safari). If it still fails, use app.netlify.com/drop to upload this file and get a link that runs the map.
-        <button type="button" onclick="document.getElementById('chatTip').classList.add('hidden');" style="margin-left:0.5rem;background:#92400e;color:#fff;border:none;padding:0.25rem 0.5rem;border-radius:4px;font-size:0.75rem;cursor:pointer;">Got it</button>
-    </div>
-    <div class="bg-red-700 text-white p-8 rounded-3xl text-center mb-8">
-        <h1 class="text-4xl font-bold banner-title-cj">C&J WELL CO</h1>
-        <p class="text-white mt-1" style="opacity:0.95;">Indiana DNR wells — map, search, filters, and full DNR detail report</p>
-    </div>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6" style="display: grid;">
-        <div class="order-1 lg:col-start-1 lg:col-span-4 lg:row-start-1 bg-white rounded-3xl shadow p-6 flex flex-col">
-            <button onclick="useMyLocation()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-white py-4 rounded-2xl font-semibold text-lg mb-4 flex items-center justify-center gap-2 btn-location-text">
-                📍 Use My Location
+        <div class="order-1 lg:col-start-1 lg:col-span-4 lg:row-start-1 cj-panel flex flex-col">
+            <button onclick="useMyLocation()" class="btn btn-accent w-full mb-4">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="cj/icons.svg#i-locate"/></svg>
+                Use My Location
             </button>
-            <button id="btnGroundElev" type="button" onclick="getGroundElevations()" class="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-2xl font-medium text-base mb-4 flex items-center justify-center gap-2">
-                📐 Get ground elevations (compare to wells)
+            <button id="btnGroundElev" type="button" onclick="getGroundElevations()" class="btn btn-ghost w-full mb-4">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="cj/icons.svg#i-elevation"/></svg>
+                Get ground elevations (compare to wells)
             </button>
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Search by address or place:</label>
+                <div class="flex gap-2">
+                    <input id="addressInput" type="text" placeholder="e.g. Indianapolis IN or 123 Main St, Avon" class="input flex-1">
+                    <button id="btnAddressSearch" onclick="searchByAddress()" class="btn btn-primary">
+                        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="cj/icons.svg#i-search"/></svg>
+                        Search
+                    </button>
+                </div>
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Search by coordinates (lat, lon):</label>
+                <div class="flex gap-2">
+                    <input id="coordsInput" type="text" placeholder="39.7605, -86.4523" class="input flex-1">
+                    <button onclick="goToCoords()" class="btn btn-primary">
+                        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="cj/icons.svg#i-map-pin"/></svg>
+                        Go
+                    </button>
+                </div>
+            </div>
+            <div class="mb-6 cj-filter-card">
+                <div class="eyebrow plain mb-3">Well Depth Search (ft)</div>
+                <div class="mb-3">
+                    <input id="minDepth" type="number" placeholder="Min depth" class="input w-full">
+                </div>
+                <div class="mb-3">
+                    <input id="maxDepth" type="number" placeholder="Max depth" class="input w-full">
+                </div>
+                <button onclick="applyFilters()" class="btn btn-primary w-full">Apply Depth Filter</button>
+            </div>
+            <input id="textSearch" type="text" placeholder="Search ID, aquifer, owner, notes..." onkeyup="applyFilters()" class="input w-full">
+        </div>
 
-            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:0.5rem 0.75rem;margin-bottom:0.75rem;">
-                <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.4rem;">Well Bottom Elevation (ft ASL)</div>
+        <div class="order-3 lg:col-start-1 lg:col-span-4 lg:row-start-2 cj-panel flex flex-col">
+            <h2 class="font-bold text-xl mb-1 text-gray-800">In radius / on map (<span id="wellCount">0</span>)</h2>
+            <p class="text-xs text-gray-500 mb-1">Total loaded in memory: <span id="totalWells" class="font-medium text-emerald-700">0</span> — use location search or filters below</p>
+            <div id="locationBanner" class="hidden mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900"></div>
+            <div id="wellsList" class="space-y-3 text-sm pr-2 mb-6" tabindex="0"></div>
+        </div>
+
+        <div class="order-4 lg:col-start-1 lg:col-span-4 lg:row-start-3 cj-panel flex flex-col">
+            <div class="cj-filter-card">
+                <p class="eyebrow plain" style="margin-bottom:0.4rem;">Well Bottom Elevation (ft ASL)</p>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="elevBlue" onchange="refreshMap()"><span class="toggle-slider" style="background:#93c5fd;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="elevBlue" aria-label="Bottom elevation 700+ ft" onchange="refreshMap()"><span class="toggle-slider" style="background:#93c5fd;"></span></label>
                     <div><div class="toggle-label" style="color:#1d4ed8;">&#9679; 700+ ft</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="elevGreen" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="elevGreen" aria-label="Bottom elevation 600 to 699 ft" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
                     <div><div class="toggle-label" style="color:#059669;">&#9679; 600&ndash;699 ft</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="elevOrange" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="elevOrange" aria-label="Bottom elevation 500 to 599 ft" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
                     <div><div class="toggle-label" style="color:#d97706;">&#9679; 500&ndash;599 ft</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="elevRed" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="elevRed" aria-label="Bottom elevation below 500 ft" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
                     <div><div class="toggle-label" style="color:#dc2626;">&#9679; Below 500 ft</div></div>
                 </div>
             </div>
 
-            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:0.5rem 0.75rem;margin-bottom:0.75rem;">
-                <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.4rem;">Well Yield / GPM</div>
+            <div class="cj-filter-card">
+                <p class="eyebrow plain" style="margin-bottom:0.4rem;">Well Yield / GPM</p>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="yieldBlue" onchange="refreshMap()"><span class="toggle-slider" style="background:#93c5fd;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="yieldBlue" aria-label="Yield 0.01 to 10 GPM" onchange="refreshMap()"><span class="toggle-slider" style="background:#93c5fd;"></span></label>
                     <div><div class="toggle-label" style="color:#1d4ed8;">&#9679; 0.01&ndash;10 GPM</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="yieldGreen" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="yieldGreen" aria-label="Yield 10.01 to 25 GPM" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
                     <div><div class="toggle-label" style="color:#059669;">&#9679; 10.01&ndash;25 GPM</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="yieldOrange" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="yieldOrange" aria-label="Yield 25.01 to 50 GPM" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
                     <div><div class="toggle-label" style="color:#d97706;">&#9679; 25.01&ndash;50 GPM</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="yieldRed" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="yieldRed" aria-label="Yield 50.01+ GPM" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
                     <div><div class="toggle-label" style="color:#dc2626;">&#9679; 50.01+ GPM</div></div>
                 </div>
             </div>
 
-            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:0.5rem 0.75rem 0.7rem 0.75rem;margin-bottom:0.75rem;">
-                <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.4rem;">Well Type Filter</div>
+            <div class="cj-filter-card">
+                <p class="eyebrow plain" style="margin-bottom:0.4rem;">Well Type Filter</p>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeUncon" onchange="refreshMap()"><span class="toggle-slider" style="background:#93bbfd;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="typeUncon" aria-label="Unconsolidated or gravel wells" onchange="refreshMap()"><span class="toggle-slider" style="background:#93bbfd;"></span></label>
                     <div><div class="toggle-label" style="color:#2563eb;">&#9679; Unconsolidated / Gravel</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeRock" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="typeRock" aria-label="Bedrock or rock wells" onchange="refreshMap()"><span class="toggle-slider" style="background:#fca5a5;"></span></label>
                     <div><div class="toggle-label" style="color:#dc2626;">&#9679; Bedrock / Rock</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeBucket" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="typeBucket" aria-label="Bucket or hand dug wells" onchange="refreshMap()"><span class="toggle-slider" style="background:#fdba74;"></span></label>
                     <div><div class="toggle-label" style="color:#f97316;">&#9679; Bucket / Hand Dug</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeDry" onchange="refreshMap()"><span class="toggle-slider" style="background:#a1a1aa;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="typeDry" aria-label="Dry hole wells" onchange="refreshMap()"><span class="toggle-slider" style="background:#a1a1aa;"></span></label>
                     <div><div class="toggle-label" style="color:#111827;">&#9679; Dry Hole</div></div>
                 </div>
                 <div class="toggle-wrap" style="padding:0.2rem 0;">
-                    <label class="toggle-switch"><input type="checkbox" id="typeEstimated" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
+                    <label class="toggle-switch"><input type="checkbox" id="typeEstimated" aria-label="Estimated or unverified locations" onchange="refreshMap()"><span class="toggle-slider" style="background:#86efac;"></span></label>
                     <div><div class="toggle-label" style="color:#16a34a;">&#9679; Estimated / Unverified Location</div></div>
                 </div>
             </div>
-
-            <h3 class="font-bold text-xl mb-1 text-gray-800">In radius / on map (<span id="wellCount">0</span>)</h3>
-            <p class="text-xs text-gray-500 mb-1">Total loaded in memory: <span id="totalWells" class="font-medium text-emerald-700">0</span> — use location search or filters below</p>
-            <div id="locationBanner" class="hidden mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900"></div>
-            <div id="wellsList" class="space-y-3 text-sm pr-2 mb-6"></div>
         </div>
 
         <div class="order-2 lg:col-start-5 lg:col-span-8 lg:row-start-1 lg:row-span-2">
@@ -445,7 +534,7 @@
                 <div id="map"></div>
                 <div class="map-bottom-bar" role="group" aria-label="Map display options">
                     <div class="toggle-wrap">
-                        <label class="toggle-switch"><input type="checkbox" id="hideWells" onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
+                        <label class="toggle-switch"><input type="checkbox" id="hideWells" aria-label="Hide well labels" onchange="refreshMap()"><span class="toggle-slider" style="background:#d1d5db;"></span></label>
                         <div><div class="toggle-label" style="color:#dc2626;font-weight:700;">Hide well labels</div></div>
                     </div>
                 </div>
@@ -457,42 +546,16 @@
             </div>
         </div>
 
-        <div class="order-3 lg:col-start-1 lg:col-span-4 lg:row-start-2 bg-white rounded-3xl shadow p-6 flex flex-col">
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Search by address or place:</label>
-                <div class="flex gap-2">
-                    <input id="addressInput" type="text" placeholder="e.g. Indianapolis IN or 123 Main St, Avon" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <button id="btnAddressSearch" onclick="searchByAddress()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Search</button>
-                </div>
-            </div>
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Search by coordinates (lat, lon):</label>
-                <div class="flex gap-2">
-                    <input id="coordsInput" type="text" placeholder="39.7605, -86.4523" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <button onclick="goToCoords()" class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xl banner-title-cj">Go</button>
-                </div>
-            </div>
-
-            <div class="mb-6 bg-gray-50 p-4 rounded-2xl">
-                <div class="text-sm font-medium text-gray-700 mb-3">Well Depth Search (ft)</div>
-                <div class="mb-3">
-                    <input id="minDepth" type="number" placeholder="Min depth" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <div class="mb-3">
-                    <input id="maxDepth" type="number" placeholder="Max depth" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <button onclick="applyFilters()" class="w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl text-xl font-bold banner-title-cj">Apply Depth Filter</button>
-            </div>
-
-            <input id="textSearch" type="text" placeholder="Search ID, aquifer, owner, notes..." onkeyup="applyFilters()" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-6">
-        </div>
     </div>
+    </main>
 
     <div id="wellModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4" style="overflow:auto;">
         <div class="modal-dialog-inner bg-white rounded-3xl w-full max-w-5xl shadow-2xl" style="max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
             <div class="flex justify-between items-center p-6 border-b shrink-0" style="flex-shrink:0;">
                 <h2 id="modalTitle" class="text-2xl font-bold text-emerald-800"></h2>
-                <button type="button" onclick="closeModal()" class="text-4xl leading-none text-gray-400 hover:text-gray-600">×</button>
+                <button type="button" onclick="closeModal()" class="btn btn-ghost btn-icon btn-sm" aria-label="Close">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="cj/icons.svg#i-close"/></svg>
+                </button>
             </div>
             <div id="modalBody" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden" style="flex:1 1 0%; min-height:0; overflow-y:auto; overflow-x:hidden; padding-bottom:120px;">
                 <div id="modalSummary" class="p-6 border-b">
@@ -507,8 +570,8 @@
                 </div>
             </div>
             <div id="modalFooter" class="modal-footer-buttons" style="display:flex; flex-direction:row; gap:1rem; align-items:center; width:100%; padding:1rem 1.5rem; border-top:1px solid #e5e7eb; flex-shrink:0; background:#fff;">
-                <button type="button" id="btnCloseModal" onclick="closeModal()" style="flex:1 1 0%; min-width:0; height:48px;" class="py-3 bg-gray-100 hover:bg-gray-200 rounded-2xl font-medium">Close</button>
-                <button type="button" id="btnViewLog" style="flex:1 1 0%; min-width:0; height:48px;" class="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-medium">View full DNR detailed report</button>
+                <button type="button" id="btnCloseModal" onclick="closeModal()" style="flex:1 1 0%; min-width:0; height:48px;" class="btn btn-ghost">Close</button>
+                <button type="button" id="btnViewLog" style="flex:1 1 0%; min-width:0; height:48px;" class="btn btn-accent">View full DNR detailed report</button>
             </div>
         </div>
     </div>
@@ -3998,5 +4061,6 @@
             initMap();
         }
     </script>
+    <script src="cj/theme-toggle.js"></script>
 </body>
 </html>

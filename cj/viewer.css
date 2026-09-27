@@ -1,0 +1,251 @@
+/* ==========================================================================
+   C&J Well Viewer chrome — loads AFTER index.html's inline <style>, so equal-
+   specificity rules here win.
+
+   LOCKED (not restyled here — they encode well data):
+   - .toggle-slider inline band colors + .toggle-label legend text colors
+   - .leaflet-* marker CSS (.vj-*, .well-marker, .well-dot, .combo-marker,
+     .marker-cluster, .well-depth-label, .elev-marker)
+   - .cj-chip-r/.cj-chip-s/.cj-chip-g list chips (R/G/S registry encoding)
+   - emerald/amber/red/blue/green utility colors in JS-built list + modal
+     markup (well type, aquifer, elevation data)
+   ========================================================================== */
+
+/* Leaflet tile imgs must not inherit the base reset's max-width:100% —
+   that scales/breaks the tile grid. */
+.leaflet-pane img,
+.leaflet-container img,
+.leaflet-image-layer,
+.leaflet-tile { max-width: none !important; }
+
+/* Marker text (depth labels, combo rows) inherits the map container's font
+   rendering. Pre-restyle body font was the 16px system stack with default
+   smoothing/rendering — keep it so marker glyphs rasterize byte-identically
+   to the captured baseline. */
+.leaflet-container {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: normal;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: auto;
+  font-feature-settings: normal;
+}
+
+/* ---------- Neutral utility remap (chrome + neutral JS-built text) ----------
+   Data-colored utilities (emerald/amber/red/blue/yellow families) are
+   deliberately untouched so data encodings survive every theme. */
+.cj-viewer .bg-white { background: var(--surface); }
+.cj-viewer .bg-gray-50 { background: var(--bg-2); }
+.cj-viewer .bg-gray-100 { background: var(--bg-3); }
+.cj-viewer .bg-slate-50 { background: var(--bg-2); }
+.cj-viewer .bg-gray-600 { background: var(--surface); }
+.cj-viewer .border-gray-200,
+.cj-viewer .border-gray-300,
+.cj-viewer .border-slate-200 { border-color: var(--line); }
+.cj-viewer .text-gray-400 { color: var(--ink-4); }
+.cj-viewer .text-gray-500 { color: var(--ink-3); }
+.cj-viewer .text-gray-600 { color: var(--ink-2); }
+.cj-viewer .text-gray-700,
+.cj-viewer .text-gray-800,
+.cj-viewer .text-gray-900 { color: var(--ink); }
+.cj-viewer .text-slate-600,
+.cj-viewer .text-slate-700 { color: var(--ink-2); }
+.cj-viewer .text-slate-800,
+.cj-viewer .text-slate-900 { color: var(--ink); }
+
+/* ---------- Page chrome ---------- */
+body.cj-viewer { font-family: var(--font-body); }
+
+/* Top bar bleeds through the body's p-4 shell so it reads like the hub's. */
+.cj-viewer > .cj-topbar { margin: -1rem -1rem var(--s-5); }
+
+.cj-page-head { margin: 0 0 var(--s-5); }
+.cj-page-head h1 { margin: var(--s-2) 0; }
+.cj-page-head .lede { max-width: 72ch; }
+
+/* Content panels (map controls, results, filters) */
+.cj-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--s-5);
+}
+.cj-panel .eyebrow { margin-bottom: var(--s-3); }
+
+/* ---------- Map chrome (marker/leaflet data styles stay locked) ---------- */
+.map-shell { border-radius: var(--radius-lg); }
+#map { border-radius: var(--radius-lg); }
+.leaflet-container .map-bottom-bar {
+  background: var(--glass);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+.map-zoom-stack {
+  background: var(--surface) !important;
+  border: 1px solid var(--line);
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow);
+}
+.map-zoom-stack .zoom-btn {
+  width: var(--tap); height: var(--tap);
+  background: transparent; color: var(--ink-2);
+}
+.map-zoom-stack .zoom-btn:hover { background: var(--bg-2) !important; color: var(--ink); }
+.leaflet-bar a {
+  width: var(--tap); height: var(--tap); line-height: var(--tap);
+  background: var(--surface); color: var(--ink-2);
+  border-color: var(--line);
+}
+/* "Total loaded in memory" counter — emerald-700 (3.4:1) failed dark; --ok is
+   a readable green in every theme. Chrome stat, not a data color. */
+#totalWells { color: var(--ok); }
+.leaflet-bar a:hover { background: var(--bg-2); color: var(--ink); }
+.leaflet-control-attribution {
+  background: var(--glass) !important;
+  color: var(--ink-4);
+}
+.leaflet-control-attribution a { color: var(--ink-3); }
+
+/* ---------- Data plates — locked data colors sit on white in all themes.
+   Filter bands, well-list cards and the modal body carry legend/data colors
+   designed for light backgrounds; the plates re-declare the light ink/line/
+   surface ramp so themed chrome rules inside resolve to light values. */
+.cj-filter-card,
+.cj-viewer #wellsList .card,
+#modalBody,
+.cj-plate {
+  --ink: #0F1522; --ink-2: #3A4150; --ink-3: #565E6A; --ink-4: #5F6672;
+  --bg-2: #F6F4EF; --bg-3: #E7E3DA; --surface: #FBFAF7;
+  --line: rgba(15, 21, 34, 0.10); --line-strong: rgba(15, 21, 34, 0.22);
+}
+
+/* ---------- Filter cards (toggle slider/label colors LOCKED inline) ---------- */
+.cj-filter-card {
+  border: 1px solid var(--plate-line);
+  border-radius: var(--radius);
+  background: var(--plate);
+  color: var(--plate-ink);
+  box-shadow: var(--plate-ring);
+  padding: var(--s-3) var(--s-4) var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.cj-filter-card:last-child { margin-bottom: 0; }
+
+/* ---------- Results list ---------- */
+.cj-viewer #wellsList .card {
+  padding: var(--s-3);
+  background: var(--plate);
+  color: var(--plate-ink);
+  border: 1px solid var(--plate-line);
+  border-radius: var(--radius);
+  box-shadow: var(--plate-ring);
+}
+.cj-viewer #wellsList .card:hover { border-color: var(--accent); }
+
+/* ---------- Loading / failure / tip states ---------- */
+#loadingDnrPanel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  color: var(--ink-2);
+  text-align: center;
+  padding: var(--s-4) var(--s-5);
+}
+#loadingDnrPanel .cj-bore { padding: var(--s-4) var(--s-4) var(--s-3); }
+#loadingDnrPanel strong { color: var(--ink); font-weight: 600; }
+#loadingDnrStatus { display: block; margin-top: var(--s-1); }
+
+#loadFailedPanel {
+  background: var(--bad-soft);
+  border: 2px solid var(--bad);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+}
+#loadFailedPanel h3 { font-family: var(--font-display); color: var(--bad); }
+#loadFailedPanel code { background: var(--bad-soft); color: var(--bad); }
+
+.chat-tip {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+.chat-tip button {
+  background: var(--warn) !important;
+}
+
+.safari-banner {
+  background: var(--warn-soft) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+}
+
+/* ---------- Modal ---------- */
+#wellModal .modal-dialog-inner {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+#modalTitle { font-family: var(--font-display); font-weight: 400; color: var(--ink); }
+/* Modal data body is a plate: white in every theme so the locked data
+   colors inside (lithology, S/G/R chips, band text) stay readable. */
+#modalBody { background: var(--plate); color: var(--plate-ink); box-shadow: var(--plate-ring); }
+#modalBody .border-b { border-color: var(--plate-line); }
+#logViewerContent { background: var(--bg-2); border-color: var(--line); }
+#modalFooter { background: var(--surface) !important; border-top-color: var(--line) !important; }
+#wellModal .modal-backdrop { background: color-mix(in srgb, var(--ink) 38%, transparent); }
+
+/* Bottom-sheet modal on phones */
+@media (max-width: 760px) {
+  #wellModal { align-items: flex-end; padding: 0; }
+  #wellModal .modal-dialog-inner {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-left: 0; border-right: 0; border-bottom: 0;
+    max-height: 88vh;
+  }
+}
+
+/* ---------- Sprite icons ---------- */
+.cj-viewer .ico {
+  width: 17px; height: 17px; flex: none;
+  display: inline-block; vertical-align: -3px;
+}
+
+/* Location/elevation status banner — a themed ok callout (its emerald
+   utilities are status colors, not registry data). */
+#locationBanner {
+  background: var(--ok-soft);
+  border-color: var(--ok) !important;
+  color: var(--ok);
+  border-radius: var(--radius);
+}
+#locationBanner strong { color: var(--ok); }
+
+/* ---------- Mobile map-first ordering (order only; DOM order untouched) ---------- */
+@media (max-width: 1023px) {
+  .cj-viewer .order-1 { order: 1; }   /* location CTA + search inputs */
+  .cj-viewer .order-2 { order: 2; }   /* map */
+  .cj-viewer .order-3 { order: 3; }   /* results list */
+  .cj-viewer .order-4 { order: 4; }   /* filters last */
+}
+
+/* ---------- Desktop map-first grid ---------- */
+@media (min-width: 1024px) {
+  /* The utility sheet's .lg:row-span-2 (grid-row: span 2) resets
+     lg:row-start-1 and auto-places the map on the LAST row — pin it to
+     own the right column across all rows while the left column
+     (controls → results → filters) scrolls. */
+  .cj-viewer .order-2 { grid-row: 1 / -1; }
+  .cj-viewer .order-2 .map-shell {
+    position: sticky;
+    top: calc(var(--top) + var(--s-4));
+    height: calc(100dvh - var(--top) - var(--s-6));
+    min-height: 520px;
+  }
+}

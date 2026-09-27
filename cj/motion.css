@@ -1,0 +1,52 @@
+/* ==========================================================================
+   C&J motion — rise/reveal stagger, pop, slide-down, shimmer skeletons.
+   Everything sits inside --dur-fast/.12s → --dur-slow/.28s and dies under
+   prefers-reduced-motion.
+   ========================================================================== */
+
+/* rise — single element */
+.reveal { opacity: 0; transform: translateY(12px); animation: rise var(--dur-slow) var(--ease-out) forwards; animation-delay: var(--d, 0s); }
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+/* staggered group — 60ms steps */
+.reveal-group > * { opacity: 0; transform: translateY(12px); animation: rise var(--dur-slow) var(--ease-out) forwards; }
+.reveal-group > :nth-child(1) { animation-delay: 0.00s; }
+.reveal-group > :nth-child(2) { animation-delay: 0.06s; }
+.reveal-group > :nth-child(3) { animation-delay: 0.12s; }
+.reveal-group > :nth-child(4) { animation-delay: 0.18s; }
+.reveal-group > :nth-child(5) { animation-delay: 0.24s; }
+.reveal-group > :nth-child(6) { animation-delay: 0.30s; }
+.reveal-group > :nth-child(7) { animation-delay: 0.36s; }
+.reveal-group > :nth-child(8) { animation-delay: 0.42s; }
+
+/* pop — small spring for popovers, badges, chips appearing */
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.pop { animation: pop var(--dur-med) var(--ease-out) both; }
+
+/* slide-down — banners, callouts, flashes entering at the top */
+@keyframes slide-down { from { opacity: 0; transform: translateY(-6px); } }
+.slide-down { animation: slide-down var(--dur-slow) var(--ease-out) both; }
+
+/* shimmer skeleton — loading placeholders */
+.skel {
+  position: relative; overflow: hidden;
+  background: var(--bg-2); border-radius: var(--radius);
+  min-height: 14px;
+}
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--surface), transparent);
+  animation: shimmer 1.4s var(--ease-in-out) infinite;
+}
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* global reduced-motion kill */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .reveal, .reveal-group > * { opacity: 1; transform: none; }
+  .skel::after { animation: none; }
+}
