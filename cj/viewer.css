@@ -108,26 +108,16 @@ body.cj-viewer { font-family: var(--font-body); }
 }
 .leaflet-control-attribution a { color: var(--ink-3); }
 
-/* ---------- Data plates — locked data colors sit on white in all themes.
-   Filter bands, well-list cards and the modal body carry legend/data colors
-   designed for light backgrounds; the plates re-declare the light ink/line/
-   surface ramp so themed chrome rules inside resolve to light values. */
-.cj-filter-card,
-.cj-viewer #wellsList .card,
-#modalBody,
-.cj-plate {
-  --ink: #0F1522; --ink-2: #3A4150; --ink-3: #565E6A; --ink-4: #5F6672;
-  --bg-2: #F6F4EF; --bg-3: #E7E3DA; --surface: #FBFAF7;
-  --line: rgba(15, 21, 34, 0.10); --line-strong: rgba(15, 21, 34, 0.22);
-}
-
-/* ---------- Filter cards (toggle slider/label colors LOCKED inline) ---------- */
+/* ---------- Filter cards (toggle slider/label colors LOCKED inline) ----------
+   The card follows the theme like any surface (--plate* resolve to
+   --surface/--ink/--line). The locked slider fills and legend dot colors
+   are untouched; in dark theme .cj-datalbl flips the label text to theme
+   ink (rule in components.css). */
 .cj-filter-card {
   border: 1px solid var(--plate-line);
   border-radius: var(--radius);
   background: var(--plate);
   color: var(--plate-ink);
-  box-shadow: var(--plate-ring);
   padding: var(--s-3) var(--s-4) var(--s-3);
   margin-bottom: var(--s-3);
 }
@@ -154,8 +144,9 @@ body.cj-viewer { font-family: var(--font-body); }
   color: var(--plate-ink);
   border: 1px solid var(--plate-line);
   border-radius: var(--radius);
-  box-shadow: var(--plate-ring);
 }
+/* Block-level data chips (badge column) keep the pill tight + right-aligned. */
+[data-theme="dark"] #wellsList div.cj-data { display: inline-block; }
 .cj-viewer #wellsList .card:hover { border-color: var(--accent); }
 
 /* ---------- Loading / failure / tip states ---------- */
@@ -207,10 +198,28 @@ body.cj-viewer { font-family: var(--font-body); }
   box-shadow: var(--shadow);
 }
 #modalTitle { font-family: var(--font-display); font-weight: 400; color: var(--ink); }
-/* Modal data body is a plate: white in every theme so the locked data
-   colors inside (lithology, S/G/R chips, band text) stay readable. */
-#modalBody { background: var(--plate); color: var(--plate-ink); box-shadow: var(--plate-ring); }
+/* Modal data body follows the theme; bare data-colored text inside gets
+   the dark-theme paper chip (.cj-data / data-color links below). */
+#modalBody { background: var(--plate); color: var(--plate-ink); }
 #modalBody .border-b { border-color: var(--plate-line); }
+[data-theme="dark"] #modalBody .text-emerald-800,
+[data-theme="dark"] #modalBody .text-emerald-600,
+[data-theme="dark"] #modalBody .text-blue-600,
+[data-theme="dark"] #modalBody .cj-report,
+[data-theme="dark"] #modalBody [style*="color:"] {
+  background: var(--data-chip);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+/* The "no well log" amber notice is chrome, not data — theme it as a warn
+   callout in dark so it never renders as a light slab. */
+[data-theme="dark"] #modalBody .bg-amber-50 {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+[data-theme="dark"] #modalBody .text-amber-900 { color: var(--ink-2); }
+[data-theme="dark"] #modalBody .text-amber-900 .font-semibold { color: var(--ink); }
+[data-theme="dark"] #modalBody .bg-amber-100 { background: var(--bg-3); }
 #logViewerContent { background: var(--bg-2); border-color: var(--line); }
 #modalFooter { background: var(--surface) !important; border-top-color: var(--line) !important; }
 #wellModal .modal-backdrop { background: color-mix(in srgb, var(--ink) 38%, transparent); }

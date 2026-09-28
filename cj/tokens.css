@@ -44,14 +44,14 @@
   --gutter: clamp(1.25rem, 3vw, 2.75rem);
   --tap: 44px;        /* minimum control height; 48px in field theme */
 
-  /* Data plates — containers whose content uses locked data colors (legend
-     bands, R/G/S chips, well-type swatches) get a fixed light surface in
-     EVERY theme so the encoding stays readable. Same values everywhere;
-     --plate-ring gives the plate a subtle outline on dark grounds. */
-  --plate: #FFFFFF;
-  --plate-ink: #0F1522;
-  --plate-line: rgba(15, 21, 34, 0.12);
-  --plate-ring: none;
+  /* Data chips — containers whose content uses locked data colors (legend
+     bands, R/G/S chips, well-type swatches) follow the theme like any card:
+     the plate tokens resolve to the active surface/ink/line in EVERY theme.
+     In dark theme only, bare data-colored text gets a small light paper
+     chip (--data-chip) so the exact encoding color stays legible. */
+  --plate: var(--surface);
+  --plate-ink: var(--ink);
+  --plate-line: var(--line);
 }
 
 /* ---------- Light ---------- */
@@ -114,8 +114,8 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
   --glass: rgba(10, 15, 26, 0.78);
   --selection: rgba(242, 85, 77, 0.28);
-  /* Data plates keep their white face in dark; a faint ring seats them. */
-  --plate-ring: 0 0 0 1px rgba(237, 235, 230, 0.14), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  /* Data chips: bare locked-color text sits on a small light paper chip. */
+  --data-chip: #EFE9DF;
 }
 
 /* ---------- Field — daylight legibility ----------
@@ -151,4 +151,62 @@
   --selection: rgba(176, 0, 0, 0.20);
   --fs-base: 1.0625rem;
   --tap: 48px;
+}
+
+/* ==========================================================================
+   Paper palettes — opt-in LIGHT-theme variants (mockup).
+   Activated by ?paper=NAME (persisted to localStorage 'cj-paper';
+   ?paper=none clears) → data-paper on <html>. They only apply under
+   data-theme="light"; the second selector also matches a descendant
+   [data-paper] wrapper so /design/palettes can render them side-by-side.
+   Text tokens that fell under 4.5:1 on the paper's darkest ground (bg-2)
+   are darkened minimally, hue preserved.
+   ========================================================================== */
+
+/* limestone — subtle warm off-white */
+[data-theme="light"][data-paper="limestone"],
+[data-theme="light"] [data-paper="limestone"] {
+  --bg: #F1ECE3; --bg-2: #E8E1D5; --bg-3: #DDD4C5; --surface: #F8F4EE;
+  --ink: #1C1A17; --ink-2: #45403A; --ink-3: #5E574E; --ink-4: #6B6359;
+  --line: rgba(60, 45, 30, 0.12); --line-strong: rgba(60, 45, 30, 0.26);
+  --glass: rgba(241, 236, 227, 0.85);
+  --warn: #93560F; --warn-soft: rgba(147, 86, 15, 0.14);
+}
+
+/* sandstone — tan */
+[data-theme="light"][data-paper="sandstone"],
+[data-theme="light"] [data-paper="sandstone"] {
+  --bg: #E9DFCE; --bg-2: #DFD2BD; --bg-3: #D3C3AA; --surface: #F3EBDD;
+  --ink: #22190F; --ink-2: #4A3D2E; --ink-3: #5F5040; --ink-4: #695947;
+  --line: rgba(70, 50, 25, 0.14); --line-strong: rgba(70, 50, 25, 0.30);
+  --glass: rgba(233, 223, 206, 0.85);
+  --accent: #BB0000; --accent-soft: rgba(187, 0, 0, 0.09);
+  --selection: rgba(187, 0, 0, 0.18);
+  --ok: #23682D; --ok-soft: rgba(35, 104, 45, 0.12);
+  --warn: #854E0D; --warn-soft: rgba(133, 78, 13, 0.14);
+  --bad: #B0251E; --bad-soft: rgba(176, 37, 30, 0.10);
+}
+
+/* kraft — light brown, most character */
+[data-theme="light"][data-paper="kraft"],
+[data-theme="light"] [data-paper="kraft"] {
+  --bg: #E2D3BD; --bg-2: #D6C4A8; --bg-3: #C9B494; --surface: #EDE2D0;
+  --ink: #24180C; --ink-2: #4B3A27; --ink-3: #5C4832; --ink-4: #644F39;
+  --line: rgba(80, 55, 25, 0.16); --line-strong: rgba(80, 55, 25, 0.32);
+  --glass: rgba(226, 211, 189, 0.85);
+  --accent: #AB0000; --accent-soft: rgba(171, 0, 0, 0.09);
+  --selection: rgba(171, 0, 0, 0.18);
+  --ok: #205F29; --ok-soft: rgba(32, 95, 41, 0.12);
+  --warn: #79470C; --warn-soft: rgba(121, 71, 12, 0.14);
+  --bad: #9F221B; --bad-soft: rgba(159, 34, 27, 0.10);
+}
+
+/* sage — muted near-complement green-gray (calms the red) */
+[data-theme="light"][data-paper="sage"],
+[data-theme="light"] [data-paper="sage"] {
+  --bg: #E9EAE2; --bg-2: #DFE1D6; --bg-3: #D2D5C8; --surface: #F3F3EE;
+  --ink: #181B17; --ink-2: #3E433C; --ink-3: #555B52; --ink-4: #5F655D;
+  --line: rgba(40, 50, 35, 0.12); --line-strong: rgba(40, 50, 35, 0.26);
+  --glass: rgba(233, 234, 226, 0.85);
+  --warn: #91550F; --warn-soft: rgba(145, 85, 15, 0.14);
 }

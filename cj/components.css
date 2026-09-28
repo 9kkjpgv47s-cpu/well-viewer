@@ -271,18 +271,29 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line);
 }
 
-/* ---------- Data plate — fixed light surface for locked data colors ----------
-   Legend swatches, R/G/S chips and other well-data encodings were designed
-   for white; on dark grounds they vanish. A plate keeps them readable in
-   every theme. Non-data text inside uses --plate-ink. */
+/* ---------- Data chips — containers that hold locked data colors ----------
+   Legend swatches, R/G/S chips and other well-data encodings keep their
+   exact locked colors; the container itself follows the theme like any
+   card (--plate* resolve to --surface/--ink/--line). In dark theme only:
+   - .cj-datalbl marks legend label TEXT — it flips to --ink-2 while the
+     colored dot/swatch keeps its locked color;
+   - .cj-data marks bare data-colored text — it sits on a small light paper
+     chip (--data-chip) so the locked color stays legible. */
 .cj-plate {
   background: var(--plate);
   color: var(--plate-ink);
   border: 1px solid var(--plate-line);
   border-radius: var(--radius);
-  box-shadow: var(--plate-ring);
 }
 .cj-plate-lg { border-radius: var(--radius-lg); }
+
+[data-theme="dark"] .cj-datalbl { color: var(--ink-2); }
+
+[data-theme="dark"] .cj-data {
+  background: var(--data-chip);
+  border-radius: 4px;
+  padding: 0 4px;
+}
 
 /* ---------- Callouts — left rule, tinted ground ---------- */
 .callout {
