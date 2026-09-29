@@ -1,12 +1,12 @@
 /* C&J theme bootstrap — no-flash. Runs before first paint.
-   Reads localStorage 'cj-theme' (light|dark|field); default follows
-   prefers-color-scheme (dark -> dark, else light).
+   Reads localStorage 'cj-theme' (light|dark); a stored 'field' or anything
+   else falls back to prefers-color-scheme (dark -> dark, else light).
    Paper palettes (light-theme variants, mockup): ?paper=limestone|sandstone|
    kraft|sage persists to localStorage 'cj-paper'; ?paper=none clears. */
 (function () {
   try {
     var t = localStorage.getItem("cj-theme");
-    if (t !== "light" && t !== "dark" && t !== "field") {
+    if (t !== "light" && t !== "dark") {
       t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     document.documentElement.dataset.theme = t;

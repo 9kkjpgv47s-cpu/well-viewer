@@ -1,11 +1,11 @@
 /* C&J theme toggle — vanilla JS for static surfaces (Well Viewer).
-   Any [data-cj-theme-toggle] button cycles light -> dark -> field, persists to
+   Any [data-cj-theme-toggle] button cycles light -> dark, persists to
    localStorage 'cj-theme', and keeps its aria-label honest. The glyph morph
    itself is pure CSS (.tt-* rules in components.css). */
 (function () {
   var KEY = "cj-theme";
-  var ORDER = ["light", "dark", "field"];
-  var NEXT = { light: "dark", dark: "field", field: "light" };
+  var ORDER = ["light", "dark"];
+  var NEXT = { light: "dark", dark: "light" };
 
   function current() {
     var t = document.documentElement.dataset.theme;

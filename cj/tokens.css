@@ -1,9 +1,9 @@
 /* ==========================================================================
    C&J design tokens — shared by Driller Hub, Well Viewer, and C&J OS surfaces.
    Instrument Serif display · Inter body · IBM Plex Mono labels/numerals.
-   Paper/ink neutrals, C&J red/yellow accents, hairlines, three themes.
-   light/dark values are verbatim from C&J OS; field is the high-contrast
-   field-readability theme (pure white ground, black ink, deep C&J red).
+   Paper/ink neutrals, C&J red/yellow accents, hairlines, two themes
+   (light/dark — values verbatim from C&J OS; the high-contrast field theme
+   was removed, light/dark only).
    ========================================================================== */
 
 :root {
@@ -42,7 +42,7 @@
   --top: 64px;
   --wrap: 1320px;
   --gutter: clamp(1.25rem, 3vw, 2.75rem);
-  --tap: 44px;        /* minimum control height; 48px in field theme */
+  --tap: 44px;        /* minimum control height */
 
   /* Data chips — containers whose content uses locked data colors (legend
      bands, R/G/S chips, well-type swatches) follow the theme like any card:
@@ -116,41 +116,6 @@
   --selection: rgba(242, 85, 77, 0.28);
   /* Data chips: bare locked-color text sits on a small light paper chip. */
   --data-chip: #EFE9DF;
-}
-
-/* ---------- Field — daylight legibility ----------
-   Pure-white ground, black ink, deep C&J red, solid surfaces (no translucency,
-   no blur), 48px tap targets, slightly larger base type. */
-[data-theme="field"] {
-  color-scheme: light;
-  --bg: #FFFFFF;
-  --bg-2: #F2F2F0;
-  --bg-3: #E6E5E1;
-  --surface: #FFFFFF;
-  --ink: #000000;
-  --ink-2: #1E232C;
-  --ink-3: #3A4150;
-  --ink-4: #4A515C;
-  --line: rgba(0, 0, 0, 0.22);
-  --line-strong: rgba(0, 0, 0, 0.45);
-  --accent: #B00000;
-  --accent-ink: #7A0000;
-  --accent-soft: rgba(176, 0, 0, 0.10);
-  --accent-2: #FFE90A;
-  --accent-2-ink: #5C4A00;
-  --accent-2-soft: rgba(255, 233, 10, 0.28);
-  --ok: #1B5E20;
-  --ok-soft: rgba(27, 94, 32, 0.12);
-  --warn: #7A4500;
-  --warn-soft: rgba(122, 69, 0, 0.12);
-  --bad: #A50E0E;
-  --bad-soft: rgba(165, 14, 14, 0.10);
-  --bad-ink: #ffffff;
-  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
-  --glass: #FFFFFF;
-  --selection: rgba(176, 0, 0, 0.20);
-  --fs-base: 1.0625rem;
-  --tap: 48px;
 }
 
 /* ==========================================================================

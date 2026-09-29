@@ -16,13 +16,6 @@
   -webkit-backdrop-filter: saturate(160%) blur(14px);
   box-shadow: 0 1px 0 var(--line);
 }
-/* Field theme: solid bar, no translucency, no blur — readable in sunlight. */
-[data-theme="field"] .cj-topbar {
-  background: var(--bg);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: 0 1px 0 var(--line-strong);
-}
 /* Touch / small screens: solid bar — the backdrop blur repaints every scrolled
    pixel over map + list content on low-power devices. Also honour the status
    bar safe area (viewport-fit=cover). */
@@ -84,7 +77,7 @@
   .cj-tag { display: none; }
 }
 
-/* ---------- Theme toggle (sun / moon / field morph) ---------- */
+/* ---------- Theme toggle (sun / moon morph) ---------- */
 .theme-toggle {
   width: var(--tap); height: var(--tap); border-radius: 999px; display: grid; place-items: center; flex: none;
   border: 1px solid var(--line-strong); color: var(--ink-2);
@@ -92,22 +85,15 @@
 }
 .theme-toggle:hover { color: var(--ink); border-color: var(--ink); }
 .theme-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
-.theme-toggle .tt-sun, .theme-toggle .tt-rays, .theme-toggle .tt-moon, .theme-toggle .tt-field {
+.theme-toggle .tt-sun, .theme-toggle .tt-rays, .theme-toggle .tt-moon {
   transition: transform 0.55s var(--ease-out), opacity 0.35s;
   transform-origin: 12px 12px;
 }
-.theme-toggle .tt-field { stroke-width: 2.6; }
 /* light shows the sun */
 [data-theme="light"] .tt-moon { opacity: 0; transform: rotate(-40deg) scale(0.6); }
-[data-theme="light"] .tt-field { opacity: 0; transform: scale(0.5); }
 /* dark shows the moon */
 [data-theme="dark"] .tt-sun { opacity: 0; transform: scale(0.4); }
 [data-theme="dark"] .tt-rays { opacity: 0; transform: rotate(60deg) scale(0.5); }
-[data-theme="dark"] .tt-field { opacity: 0; transform: scale(0.5); }
-/* field shows the bold sun ring */
-[data-theme="field"] .tt-sun { opacity: 0; transform: scale(0.4); }
-[data-theme="field"] .tt-rays { opacity: 0; transform: rotate(60deg) scale(0.5); }
-[data-theme="field"] .tt-moon { opacity: 0; transform: rotate(-40deg) scale(0.6); }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -186,14 +172,9 @@
   color: var(--ink); background: var(--surface); border-color: var(--line-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-[data-theme="field"] .seg button[aria-pressed="true"],
-[data-theme="field"] .seg button[aria-selected="true"],
-[data-theme="field"] .seg button.on {
-  border-color: var(--ink);
-}
 .seg .seg-icon { display: inline-flex; align-items: center; margin-right: var(--s-1); }
 .seg .seg-icon svg { width: 15px; height: 15px; }
-/* compact density — toolbars; tap floor still holds (44 / 48 field) */
+/* compact density — toolbars; tap floor still holds (44px) */
 .seg-sm button { min-height: var(--tap); padding: 0.2rem 0.7rem; font-size: var(--fs-xs); }
 
 /* ---------- Forms ---------- */
