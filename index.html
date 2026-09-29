@@ -3149,6 +3149,12 @@
             document.getElementById('wellModal').classList.add('hidden');
             document.body.classList.remove('modal-open');
         }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !document.getElementById('wellModal').classList.contains('hidden')) closeModal();
+        });
+        document.getElementById('wellModal').addEventListener('click', function (e) {
+            if (e.target === this) closeModal();
+        });
         function getReportUrl() {
             if (!selectedWellForLog) return '';
             return selectedWellForLog.report || 'https://secure.in.gov/apps/dnr/water/dnr_waterwell?refNo=' + (selectedWellForLog.refno || selectedWellForLog.id) + '&_from=SUMMARY&_action=Details';
