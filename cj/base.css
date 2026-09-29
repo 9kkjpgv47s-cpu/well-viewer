@@ -43,7 +43,7 @@ input, select, textarea { font-size: max(1em, 16px); }
   border-radius: 2px;
 }
 
-.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
 /* Skip link — visually hidden until keyboard focus lands on it */
 .skip-link {
