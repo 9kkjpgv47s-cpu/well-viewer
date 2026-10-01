@@ -270,7 +270,14 @@ body.cj-viewer { font-family: var(--font-body); }
      lg:row-start-1 and auto-places the map on the LAST row — pin it to
      own the right column across all rows while the left column
      (controls → results → filters) scrolls. */
-  .cj-viewer .order-2 { grid-row: 1 / -1; }
+  .cj-viewer .order-2 { grid-row: 1 / span 3; }
+  /* `1 / -1` only spans explicit rows (none here), so the map owned row 1
+     alone and pushed results below its full height. Content-sized rows +
+     a 1fr tail keep the left cards stacked at the normal gap. */
+  .cj-viewer .grid:has(> .order-2) {
+    grid-template-rows: auto auto 1fr;
+    align-content: start;
+  }
   /* Left column cards size to their content — without this they stretch
      to the spanning map row and leave dead space at the bottom. */
   .cj-viewer .order-1,
