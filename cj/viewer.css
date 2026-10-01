@@ -256,6 +256,12 @@ body.cj-viewer { font-family: var(--font-body); }
   .cj-viewer .order-2 { order: 2; }   /* map */
   .cj-viewer .order-3 { order: 3; }   /* results list */
   .cj-viewer .order-4 { order: 4; }   /* filters last */
+  /* WebKit: content-visibility:auto items report intrinsic width (650px)
+     as min-content and blow out the 1-col grid — let items shrink. */
+  .cj-viewer .order-1,
+  .cj-viewer .order-2,
+  .cj-viewer .order-3,
+  .cj-viewer .order-4 { min-width: 0; }
 }
 
 /* ---------- Desktop map-first grid ---------- */
